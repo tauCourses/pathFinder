@@ -2,7 +2,6 @@ import sys
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
-
 def load_obstacles(filename):
 	with open(filename, 'r') as myfile:
 		data = myfile.read().replace('\n', ' ')
