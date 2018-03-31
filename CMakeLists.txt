@@ -40,7 +40,7 @@ endif ()
 # Creating entries for target: executable
 # ############################
 
-set(SOURCE_FILES main.cpp Path.cpp Path.h CGAL_defines.h)
+set(SOURCE_FILES main.cpp Path.cpp Path.h CGAL_defines.h vertical_decomposition.h PathPlanner.cpp PathPlanner.h)
 add_executable(PathFinder ${SOURCE_FILES})
 
 add_to_cached_list(CGAL_EXECUTABLE_TARGETS PathFinder)
