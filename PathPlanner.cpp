@@ -86,13 +86,13 @@ void PathPlanner::verticalDecomposition(Arrangement_2 &arr, Kernel &ker) {
 
     // For each vertex in the arrangment, locate the feature that lies
     // directly below it and the feature that lies directly above it.
-    list<Vd_entry>   vd_list;
+    std::list<Vd_entry>   vd_list;
     CGAL::decompose(arr, back_inserter(vd_list));
 
     // Go over the vertices (given in ascending lexicographical xy-order),
     // and add segements to the feautres below and above it.
     const typename Kernel::Equal_2 equal = ker.equal_2_object();
-    typename list<Vd_entry>::iterator  it, prev = vd_list.end();
+    typename std::list<Vd_entry>::iterator  it, prev = vd_list.end();
     for (it = vd_list.begin(); it != vd_list.end(); ++it) {
         // If the feature above the previous vertex is not the current vertex,
         // add a vertical segment to the feature below the vertex.
@@ -168,13 +168,22 @@ void PathPlanner::setFacesPath(Arrangement_2& arr)
     catch(Found_vertex_exception e) {}
 }
 
-Point_2 PathPlanner::midPoint(Face_const_handle face)
-{
-    return {0,0};
-}
-Point_2 PathPlanner::midPoint(Halfedge_const_handle edge)
-{
-    return {0,0};
+vector<Point_2> PathPlanner::reversedPath(Arrangement_2& arr, Kernel& ker){
+    vector<Point_2> path;
+    Kernel::Construct_midpoint_2  midp = ker.construct_midpoint_2_object();
+    path.push_back(this->end);
+
+    Face_handle f = this->end_face;
+    do {
+        path.push_back(point_in_vertical_trapezoid(f, arr, ker));
+        Halfedge_handle he = edges_map[f];
+        if (he != Halfedge_handle())
+            // Add the midpoint of the associated vertical segment.
+            path.push_back(midp(he->source()->point(), he->target()->point()));
+        f = this->preds_map[f];
+    } while (f != Face_handle());
+    path.push_back(this->start);
+
 }
 
 vector<Point_2> PathPlanner::planPath() {
@@ -187,20 +196,48 @@ vector<Point_2> PathPlanner::planPath() {
     observer.detach();
 
     setFacesPath(arr);
-
+    vector<Point_2> path, reversedPath = this->reversedPath(arr, *ker);
+    for(int i = static_cast<int>(reversedPath.size()); i >= 0; i--)
+        path.push_back(reversedPath[i]);
     //create points path from faceNode path:
-    /*vector<Point_2> path;
-    path.push_back(this->start);
-    path.push_back(this->midPoint(facePath[facePath.size()-1].face));
-    for(int i=facePath.size()-2; i >=0; i--)
-    {
-        path.push_back(midPoint(facePath[i].fatherEdge));
-        path.push_back(midPoint(facePath[i].face));
-    }
-    path.push_back(this->end);*/
-    return vector<Point_2>({start,{1.71,5.57},{23.84,5.94},{21.21,29.17}, end});
+
+    //reverse path - from start to end
+    return reversedPath;//vector<Point_2>({start,{1.71,5.57},{23.84,5.94},{21.21,29.17}, end});
 }
 
+Point_2 PathPlanner::point_in_vertical_trapezoid(Face_const_handle f, const Arrangement_2& arr, const Kernel& ker)
+{
+    const typename Arrangement_2::Traits_2::Is_vertical_2 is_vertical =
+            arr.traits()->is_vertical_2_object();
+    const typename Kernel::Construct_midpoint_2 midpoint =
+            ker.construct_midpoint_2_object();
 
+    // Locate the two edges along the face boundary that are not associated
+    // with vertical segments, such that one lies on the upper boundary of the
+    // face and the other on its lower boundary. Note that these two edges must
+    // have opposite directions.
+    Halfedge_const_handle he1, he2;
+    CGAL::Arr_halfedge_direction direction;
+    bool found = false;
+    typename Arrangement_2::Ccb_halfedge_const_circulator first = f->outer_ccb();
+    typename Arrangement_2::Ccb_halfedge_const_circulator circ = first;
+    do {
+        if (!is_vertical(circ->curve())) {
+            // The current edge is not vertical: assign it as either he1 or he2.
+            if (!found) {
+                he1 = circ;
+                direction = he1->direction();
+                found = true;
+                continue;
+            }
+            if (circ->direction() != direction) {
+                he2 = circ;
+                break;
+            }
+        }
+    } while (++circ != first);
 
-
+    // Take the midpoint of the midpoints of he1 and he2.
+    return midpoint(midpoint(he1->source()->point(), he1->target()->point()),
+                    midpoint(he2->source()->point(), he2->target()->point()));
+}

@@ -1,7 +1,3 @@
-//
-// Created by t-idkess on 18-Mar-18.
-//
-
 #ifndef INC_2_3_CGAL_DEFINES_H
 #define INC_2_3_CGAL_DEFINES_H
 
@@ -12,6 +8,7 @@
 #include <CGAL/Segment_2.h>
 #include <CGAL/Polygon_2.h>
 #include <CGAL/Polygon_set_2.h>
+#include <CGAL/basic.h>
 #include <CGAL/minkowski_sum_2.h>
 #include <CGAL/Arr_vertical_decomposition_2.h>
 #include <CGAL/Arr_landmarks_point_location.h>

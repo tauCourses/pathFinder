@@ -2,6 +2,8 @@
 #define PATHFINDER_PATHPLANNER_H
 
 #include <vector>
+#include <list>
+
 #include "CGAL_defines.h"
 
 #include <boost/property_map/property_map.hpp>
@@ -28,11 +30,17 @@ public:
 
 
 class Less_than_handle {
+public:
     template <typename Type>
     bool operator()(Type s1, Type s2) const { return (&(*s1) < &(*s2)); }
 };
 
+typedef std::map<Face_handle, Face_handle, Less_than_handle>     Preds_map;
+typedef std::map<Face_handle, Halfedge_handle, Less_than_handle> Edges_map;
+
+
 class FreeSpaceFace {
+public:
     bool operator()(Face_handle f) const
     { f->contained(); }
     bool operator()(Face_const_handle f) const
@@ -46,6 +54,7 @@ class polygon_split_observer : public CGAL::Arr_observer<Arrangement_2>
 
 class PathPlanner {
 private:
+
     const Point_2 &start;
     const Point_2 &end;
     const Polygon_2 &robot;
@@ -59,8 +68,8 @@ private:
     Face_handle end_face;
 
     //bfs maps:
-    typedef std::map<Face_handle, Face_handle, Less_than_handle>     Preds_map;
-    typedef std::map<Face_handle, Halfedge_handle, Less_than_handle> Edges_map;
+    Preds_map preds_map;
+    Edges_map edges_map;
 
     void setInversedRobot();
     void setFreeSpace();
@@ -71,8 +80,8 @@ private:
     Face_handle get_face(Arrangement_2& arr, const Landmarks_pl &pl, const Point_2 &p);
     void setFacesPath(Arrangement_2& arr);
 
-    Point_2 midPoint(Face_const_handle face);
-    Point_2 midPoint(Halfedge_const_handle edge);
+    Point_2 point_in_vertical_trapezoid(Face_const_handle f, const Arrangement_2& arr, const Kernel& ker);
+    vector<Point_2> reversedPath(Arrangement_2& arr, Kernel& ker);
 
 public:
     PathPlanner(const Point_2 start, const Point_2 end, const Polygon_2 &robot, vector<Polygon_2> &obstacles);
