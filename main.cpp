@@ -6,6 +6,7 @@
 #include "CGAL_defines.h"
 
 #include "Path.h"
+#include "vertical_decomposition.h"
 
 using namespace std;
 
@@ -112,10 +113,11 @@ bool insertPolygonIntoArng( Arrangement_2&              arr,
 }
 
 //----------------------------------------------------------------------------
-const ArrFaceCHandle*
-getPathFace( const Point_2&        start,
-             const Point_2&        end,
-             const Arrangement_2&  arr )
+pair<const ArrFaceCHandle*, const ArrFaceCHandle*>
+getPathFaces( const Point_2&        start,
+              const Point_2&        end,
+              const Arrangement_2&  arr,
+              bool&                 bSame )
 {
   list<Point_2> pts;
   pts.push_back(start);
@@ -141,49 +143,46 @@ getPathFace( const Point_2&        start,
   //  cout << "inside "
   //       << (((*f)->is_unbounded()) ? "the unbounded" : "a bounded")
   //       << " face." << endl;
+  pair<const ArrFaceCHandle*, const ArrFaceCHandle*> res( boost::get<ArrFaceCHandle>(&(results.begin()->second)) ,
+                                                          boost::get<ArrFaceCHandle>(&(it->second))  );
 
-  if(!(bSameObject && bProperFace[1]))
-    pResFace = nullptr;
-  return pResFace;
+  bSame = (bSameObject && bProperFace[1]);
+  return res;
 }
 
 //----------------------------------------------------------------------------
 // Iterating through a DCEL face
 // https://doc.cgal.org/latest/Arrangement_on_surface_2/index.html
 // Example 2.5
-bool convertFace2BndPolyWHoles(const ArrFaceCHandle&  hArrFace,
-                               const Point_2&         start,
-                               const Point_2&         end,
-                               Polygon_with_holes_2&  finalSrc)
+void print_ccb (Arrangement_2::Ccb_halfedge_const_circulator circ)
 {
-  Kernel::FT maxX = start[0] > end[0] ?  start[0] : end[0];
-  Kernel::FT maxY = start[1] > end[1] ?  start[1] : end[1];
-  Kernel::FT minX = start[0] < end[0] ?  start[0] : end[0];
-  Kernel::FT minY = start[1] < end[1] ?  start[1] : end[1];
+  Arrangement_2::Ccb_halfedge_const_circulator curr = circ;
+  std::cout << "(" << curr->source()->point() << ")";
+  do {
+    const HEdge& he = *curr;//->handle();
+    std::cout << " [" << he.curve() << "] "
+              << "(" << he.target()->point() << ")";
+  } while (++curr != circ);
+  std::cout << std::endl;
+}
 
-//  Ccb_halfedge_const_circulator curr = circ;
-//  std::cout << "(" << curr->source()->point() << ")";
-//  do {
-//    Arrangement_2::Halfedge_const_handle he = curr->handle();
-//    std::cout << " [" << he->curve() << "] "
-//              << "(" << he->target()->point() << ")";
-//  } while (++curr != circ);
-//  std::cout << std::endl;
 
-//  // Print the outer boundary.
-//  if (f->is_unbounded())
-//    std::cout << "Unbounded face. " << std::endl;
-//  else {
-//    std::cout << "Outer boundary: ";
-//    print_ccb (f->outer_ccb());
-//  }
-//  // Print the boundary of each of the holes.
-//  Arrangement_2::Hole_const_iterator hi;
-//  int index = 1;
-//  for (hi = f->holes_begin(); hi != f->holes_end(); ++hi, ++index) {
-//    std::cout << " Hole #" << index << ": ";
-//    print_ccb (*hi);
-//  }
+bool print_arr_face(const ArrFaceCHandle&  f)
+{
+  // Print the outer boundary.
+  if (f->is_unbounded())
+    std::cout << "Unbounded face. " << std::endl;
+  else {
+    std::cout << "Outer boundary: ";
+    print_ccb (f->outer_ccb());
+  }
+  // Print the boundary of each of the holes.
+  Arrangement_2::Hole_const_iterator hi;
+  int index = 1;
+  for (hi = f->holes_begin(); hi != f->holes_end(); ++hi, ++index) {
+    std::cout << " Hole #" << index << ": ";
+    print_ccb (*hi);
+  }
 }
 //----------------------------------------------------------------------------
 vector<Point_2> findPath(const Point_2&      start,
@@ -201,20 +200,32 @@ vector<Point_2> findPath(const Point_2&      start,
     //print_polygon(currConfObst.outer_boundary());
   }
 
-  Arrangement_2 arr;
+  CGAL::Arr_segment_traits_2<Kernel> traits;
+  Arrangement_2 arr(&traits);
   for( const Polygon_with_holes_2& pwh : vecConfObst)
     insertPolygonIntoArng( arr, pwh );
 
-  const ArrFaceCHandle* phArrFace = getPathFace(start, end, arr );
-  if( nullptr == phArrFace )
+  bool bSameFace = false;
+  pair<const ArrFaceCHandle*, const ArrFaceCHandle*> arrFaces = 
+                                    getPathFaces(start, end, arr, bSameFace );
+  if( !bSameFace )
     return vector<Point_2>();
 
   cout << "Query points are in the same Arrangement face. "
        << "A solution exists" << endl;
-
   //
   //... to be continued...
   //
+  Kernel* kernel = &traits;
+  vertical_decomposition(arr, *kernel);
+
+  pair<const ArrFaceCHandle*, const ArrFaceCHandle*> vertArrFaces = 
+                                     getPathFaces(start, end, arr, bSameFace);
+  //print_arr_face(*(vertArrFaces.first));
+  //print_arr_face(*(vertArrFaces.second));
+  //cout << *(vertArrFaces.first) << endl;
+  cout << "==========================" << endl;
+  cout << arr << endl;
   return vector<Point_2>({start,{1.71,5.57},{23.84,5.94},{21.21,29.17}, end});
 }
 //----------------------------------------------------------------------------

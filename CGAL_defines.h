@@ -39,4 +39,6 @@ typedef std::pair<Point_2, PointLocationResult::Type>   QueryResult;
 typedef Arrangement_2::Vertex_const_handle              ArrVrtxCHandle;
 typedef Arrangement_2::Halfedge_const_handle            ArrHedgeCHandle;
 typedef Arrangement_2::Face_const_handle                ArrFaceCHandle;
+typedef Arrangement_2::Face_handle                      ArrFaceHandle;
+typedef Arrangement_2::Halfedge                         HEdge;
 #endif //INC_2_3_CGAL_DEFINES_H
