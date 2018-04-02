@@ -132,9 +132,27 @@ getPathFaces( const Point_2&        start,
   {
     //cout << "The point (" << it->first << ") is located ";
     if( pResFace = boost::get<ArrFaceCHandle>(&(it->second)) )
+    {
       bProperFace[i] = true;
-    else
-      bProperFace[i] = false;
+      cout << "Face found" << endl;
+      continue;
+    }
+    else if( const ArrHedgeCHandle* e = boost::get<ArrHedgeCHandle>(&(it->second))) // on an edge
+    {
+      const Point_2 src = (*e)->source()->point();
+      const Point_2 trg = (*e)->target()->point();
+      double x0 = CGAL::to_double(src[0]);
+      double y0 = CGAL::to_double(src[1]);
+      double x1 = CGAL::to_double(trg[0]);
+      double y1 = CGAL::to_double(trg[1]);
+      std::cout << "on an edge: [" << x0 << ", " << y0 << "] -> [" << x1 << ", " << y1 << "]" << std::endl;
+    }
+    else if (const ArrVrtxCHandle*   v = boost::get<ArrVrtxCHandle>(&(it->second)))  // on a vertex
+      std::cout << "on "
+                << (((*v)->is_isolated()) ? "an isolated" : "a")
+                << " vertex: " << (*v)->point() << std::endl;        
+    bProperFace[i] = false;
+   
   }
   it = results.begin();
   ++it;
@@ -157,11 +175,13 @@ getPathFaces( const Point_2&        start,
 void print_ccb (Arrangement_2::Ccb_halfedge_const_circulator circ)
 {
   Arrangement_2::Ccb_halfedge_const_circulator curr = circ;
+  const Point_2& pt = curr->target()->point();
+  std::cout << "(" << CGAL::to_double(pt[0]) << CGAL::to_double(pt[1]) << ")";
   std::cout << "(" << curr->source()->point() << ")";
   do {
     const HEdge& he = *curr;//->handle();
-    std::cout << " [" << he.curve() << "] "
-              << "(" << he.target()->point() << ")";
+    const Point_2& pt = he.target()->point();
+    std::cout << "(" << CGAL::to_double(pt[0]) << CGAL::to_double(pt[1]) << ")";
   } while (++curr != circ);
   std::cout << std::endl;
 }
@@ -211,6 +231,9 @@ vector<Point_2> findPath(const Point_2&      start,
   if( !bSameFace )
     return vector<Point_2>();
 
+  //print_arr_face(*(arrFaces.first));
+  //print_arr_face(*(arrFaces.second));
+
   cout << "Query points are in the same Arrangement face. "
        << "A solution exists" << endl;
   //
@@ -225,7 +248,7 @@ vector<Point_2> findPath(const Point_2&      start,
   //print_arr_face(*(vertArrFaces.second));
   //cout << *(vertArrFaces.first) << endl;
   cout << "==========================" << endl;
-  cout << arr << endl;
+  //cout << arr << endl;
   return vector<Point_2>({start,{1.71,5.57},{23.84,5.94},{21.21,29.17}, end});
 }
 //----------------------------------------------------------------------------
