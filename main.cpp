@@ -10,6 +10,7 @@
 
 using namespace std;
 
+void print_ccb (Arrangement_2::Ccb_halfedge_const_circulator circ);
 
 Point_2 loadPoint_2(std::ifstream &is) {
     Kernel::FT x, y;
@@ -113,75 +114,126 @@ bool insertPolygonIntoArng( Arrangement_2&              arr,
 }
 
 //----------------------------------------------------------------------------
-pair<const ArrFaceCHandle*, const ArrFaceCHandle*>
+list<ArrFaceCHandle>
 getPathFaces( const Point_2&        start,
               const Point_2&        end,
-              const Arrangement_2&  arr,
-              bool&                 bSame )
+              const Arrangement_2&  arr )
 {
   list<Point_2> pts;
   pts.push_back(start);
   pts.push_back(end);
-  std::list<QueryResult>  results;
-  locate(arr, pts.begin(), pts.end(), std::back_inserter(results));
-  std::list<QueryResult>::const_iterator it;
-  bool bProperFace[2];
+  std::list<QueryResult>  queryRes;
+  locate(arr, pts.begin(), pts.end(), std::back_inserter(queryRes));
+  list<QueryResult>::const_iterator it;
   int i = 0;
-  const ArrFaceCHandle* pResFace = nullptr;
-  for( it = results.begin(); it != results.end(); ++it, ++i)
+  list<ArrFaceCHandle>  res;
+  for( it = queryRes.begin(); it != queryRes.end(); ++it, ++i)
   {
     //cout << "The point (" << it->first << ") is located ";
-    if( pResFace = boost::get<ArrFaceCHandle>(&(it->second)) )
+    if( const ArrFaceCHandle* pResFace = boost::get<ArrFaceCHandle>(&(it->second)) )
     {
-      bProperFace[i] = true;
+      res.push_back( *pResFace );
       cout << "Face found" << endl;
-      continue;
     }
-    else if( const ArrHedgeCHandle* e = boost::get<ArrHedgeCHandle>(&(it->second))) // on an edge
+    else if( const ArrHedgeCHandle* e = boost::get<ArrHedgeCHandle>(&(it->second)))
     {
+      ArrFaceCHandle hLeftFace  = (*e)->face();
+      ArrFaceCHandle hRightFace = (*e)->twin()->face();
+      res.push_back( hLeftFace );
+      res.push_back( hRightFace );
       const Point_2 src = (*e)->source()->point();
       const Point_2 trg = (*e)->target()->point();
       double x0 = CGAL::to_double(src[0]);
       double y0 = CGAL::to_double(src[1]);
       double x1 = CGAL::to_double(trg[0]);
       double y1 = CGAL::to_double(trg[1]);
-      std::cout << "on an edge: [" << x0 << ", " << y0 << "] -> [" << x1 << ", " << y1 << "]" << std::endl;
+      cout << "on an edge: [" << x0 << ", " << y0 
+           << "] -> [" << x1 << ", " << y1 << "]" << std::endl;
     }
-    else if (const ArrVrtxCHandle*   v = boost::get<ArrVrtxCHandle>(&(it->second)))  // on a vertex
-      std::cout << "on "
+    else if (const ArrVrtxCHandle* v = 
+                                 boost::get<ArrVrtxCHandle>(&(it->second)))
+    { 
+      cout << "on "
                 << (((*v)->is_isolated()) ? "an isolated" : "a")
-                << " vertex: " << (*v)->point() << std::endl;        
-    bProperFace[i] = false;
-   
+                << " vertex: " << (*v)->point() << std::endl;       
+    }
   }
-  it = results.begin();
-  ++it;
-  bool bSameObject = it->second == results.begin()->second;
-  //if( bSameObject && bProperFace[1] )
-  //  cout << "inside "
-  //       << (((*f)->is_unbounded()) ? "the unbounded" : "a bounded")
-  //       << " face." << endl;
-  pair<const ArrFaceCHandle*, const ArrFaceCHandle*> res( boost::get<ArrFaceCHandle>(&(results.begin()->second)) ,
-                                                          boost::get<ArrFaceCHandle>(&(it->second))  );
-
-  bSame = (bSameObject && bProperFace[1]);
   return res;
 }
 
 //----------------------------------------------------------------------------
-// Iterating through a DCEL face
-// https://doc.cgal.org/latest/Arrangement_on_surface_2/index.html
-// Example 2.5
-void print_ccb (Arrangement_2::Ccb_halfedge_const_circulator circ)
+void updateMinMax( const Point_2& pt, 
+                   double& minx, double& miny,
+                   double& maxx, double& maxy  )
 {
-  Arrangement_2::Ccb_halfedge_const_circulator curr = circ;
-  const Point_2& pt = curr->target()->point();
-  std::cout << "(" << CGAL::to_double(pt[0]) << CGAL::to_double(pt[1]) << ")";
-  std::cout << "(" << curr->source()->point() << ")";
+  double x = CGAL::to_double(pt[0]);
+  double y = CGAL::to_double(pt[1]);
+  minx = min(x, minx);
+  maxx = max(x, maxx);
+  miny = min(y, miny);
+  maxy = max(x, maxy);
+}
+
+void updateBoundaryRanges( ArrCCBHedgeCCirc circ, 
+                           double& minx, double& miny,
+                           double& maxx, double& maxy )
+{
+  ArrCCBHedgeCCirc curr = circ;
+  do {
+    const HEdge& he = *curr;//->handle();
+    const Point_2& pt = he.source()->point();
+    updateMinMax( pt, minx, miny, maxx, maxy );
+  } while (++curr != circ);
+}
+//----------------------------------------------------------------------------
+void addOuterRectBoundary( Arrangement_2&  arr, 
+                           const Polygon_2& robot,
+                           const Point_2&  start, 
+                           const Point_2&  end )
+{
+  ArrFaceCHandle ff = arr.fictitious_face();
+  Bbox_2 robotBbox = robot.bbox();
+  double minx = robotBbox.xmin();
+  double miny = robotBbox.ymin();
+  double maxx = robotBbox.xmax();
+  double maxy = robotBbox.ymax();
+  double rx = fabs(maxx - minx);
+  double ry = fabs(maxy - miny);
+
+  updateMinMax( start, minx, miny, maxx, maxy );
+  updateMinMax( end, minx, miny, maxx, maxy );
+
+  Arrangement_2::Hole_const_iterator  hi;
+  for( hi = ff->holes_begin(); hi != ff->holes_end(); ++hi ) 
+    updateBoundaryRanges( *hi, minx, miny, maxx, maxy );
+  minx -= rx;
+  maxx += rx;
+  miny -= ry;
+  maxy += ry; 
+  Polygon_2 outb;
+  for( int i = 0; i < 4; ++i )
+    outb.push_back( Point_2( (i < 2) ? minx:maxx, 
+                             (i == 1 || i == 2) ? maxy:miny ) );
+  CGAL::insert(arr, outb.edges_begin(), outb.edges_end());
+}
+//----------------------------------------------------------------------------
+// Iterating through a DCEL face boundary
+void print_ccb( ArrCCBHedgeCCirc circ )
+{
+  ArrCCBHedgeCCirc curr = circ;
+  int k = 1;
+  do{
+    ++k;
+  }while(++curr != circ);
+  cout << k << " ";
+  const Point_2& pt = curr->source()->point();
+  cout << CGAL::to_double(pt[0]) << " " 
+       << CGAL::to_double(pt[1]) << " ";
   do {
     const HEdge& he = *curr;//->handle();
     const Point_2& pt = he.target()->point();
-    std::cout << "(" << CGAL::to_double(pt[0]) << CGAL::to_double(pt[1]) << ")";
+    cout << CGAL::to_double(pt[0]) << " " 
+         << CGAL::to_double(pt[1]) << " ";
   } while (++curr != circ);
   std::cout << std::endl;
 }
@@ -191,7 +243,7 @@ bool print_arr_face(const ArrFaceCHandle&  f)
 {
   // Print the outer boundary.
   if (f->is_unbounded())
-    std::cout << "Unbounded face. " << std::endl;
+    cout << "Unbounded face. " << std::endl;
   else {
     std::cout << "Outer boundary: ";
     print_ccb (f->outer_ccb());
@@ -203,6 +255,54 @@ bool print_arr_face(const ArrFaceCHandle&  f)
     std::cout << " Hole #" << index << ": ";
     print_ccb (*hi);
   }
+}
+//----------------------------------------------------------------------------
+list<ArrFaceCHandle>::const_iterator 
+getTwoInstanceFace( const list<ArrFaceCHandle>& faces )
+{
+  list<ArrFaceCHandle>::const_iterator i = faces.begin();
+  for( ; i != faces.end(); ++i )
+  {
+    list<ArrFaceCHandle>::const_iterator j = i;
+    for( ++j; j != faces.end(); ++j )
+      if( *i == *j )
+        return i;
+  }
+  return faces.end();
+}
+
+//----------------------------------------------------------------------------
+Point_2 getCenter( Arrangement_2::Face CurrFace )
+{
+  ArrCCBHedgeCCirc circ = CurrFace.outer_ccb();
+  cout << "Here2" << endl;
+
+  ArrCCBHedgeCCirc curr = circ;
+  vector<Point_2> pts;
+  do {
+    const HEdge he = *curr;//->handle();
+    cout << "Here 3" << endl;
+    Arrangement_2::Vertex v = *(he.target());
+    Point_2 pt = v.point();
+    cout << "Here 4" << endl;
+    pts.push_back( pt );
+  } while (++curr != circ);
+  return CGAL::centroid( pts.begin(), pts.end() );  
+}
+//----------------------------------------------------------------------------
+void createGraph( Arrangement_2&   arrConfSpace, 
+                  Arrangement_2&   arrTrpzSplit,
+                  ArrFaceCHandle&  hPathFace )
+{
+  list<Point_2> TrpzCntrs;
+  Arrangement_2::Face_const_iterator iTrpzFaces = arrTrpzSplit.faces_begin(); 
+  cout << "arrTrpzSplit.faces() = " << arrTrpzSplit.number_of_faces() << endl;
+  for( ; iTrpzFaces != arrTrpzSplit.faces_end(); ++iTrpzFaces )
+  {
+    Arrangement_2::Face f = *iTrpzFaces;
+    TrpzCntrs.push_back( getCenter( f ) );
+  }
+  cout << "TrpzCntrs = " << TrpzCntrs.size() << endl;
 }
 //----------------------------------------------------------------------------
 vector<Point_2> findPath(const Point_2&      start,
@@ -221,15 +321,20 @@ vector<Point_2> findPath(const Point_2&      start,
   }
 
   CGAL::Arr_segment_traits_2<Kernel> traits;
-  Arrangement_2 arr(&traits);
+  Arrangement_2 arrConfSpace(&traits);
   for( const Polygon_with_holes_2& pwh : vecConfObst)
-    insertPolygonIntoArng( arr, pwh );
+    insertPolygonIntoArng( arrConfSpace, pwh );
 
-  bool bSameFace = false;
-  pair<const ArrFaceCHandle*, const ArrFaceCHandle*> arrFaces = 
-                                    getPathFaces(start, end, arr, bSameFace );
-  if( !bSameFace )
+  list<ArrFaceCHandle> arrFaces = getPathFaces( start, end, arrConfSpace );
+  list<ArrFaceCHandle>::const_iterator iPathFace = getTwoInstanceFace(arrFaces);
+  bool bPathExists = iPathFace != arrFaces.end();
+  if( !bPathExists )
     return vector<Point_2>();
+
+  ArrFaceCHandle hPathFace = *iPathFace;
+  bool bPathFaceIsUnbounded = hPathFace->is_unbounded();
+  if( bPathFaceIsUnbounded )
+      addOuterRectBoundary( arrConfSpace, robot, start, end );
 
   //print_arr_face(*(arrFaces.first));
   //print_arr_face(*(arrFaces.second));
@@ -240,11 +345,15 @@ vector<Point_2> findPath(const Point_2&      start,
   //... to be continued...
   //
   Kernel* kernel = &traits;
-  vertical_decomposition(arr, *kernel);
+  Arrangement_2 arrTrpzSplit(arrConfSpace);
+  vertical_decomposition(arrTrpzSplit, *kernel);
 
-  pair<const ArrFaceCHandle*, const ArrFaceCHandle*> vertArrFaces = 
-                                     getPathFaces(start, end, arr, bSameFace);
-  //print_arr_face(*(vertArrFaces.first));
+  list<ArrFaceCHandle> vertArrFaces = getPathFaces(start, end, arrTrpzSplit);
+  print_arr_face(*vertArrFaces.begin());
+  print_arr_face(*(++vertArrFaces.begin()));
+  print_arr_face(*(++(++vertArrFaces.begin())));
+
+  createGraph(arrConfSpace, arrTrpzSplit, hPathFace );
   //print_arr_face(*(vertArrFaces.second));
   //cout << *(vertArrFaces.first) << endl;
   cout << "==========================" << endl;

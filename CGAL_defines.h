@@ -42,4 +42,7 @@ typedef Arrangement_2::Face_const_handle                ArrFaceCHandle;
 typedef Arrangement_2::Face_handle                      ArrFaceHandle;
 typedef Arrangement_2::Halfedge                         HEdge;
 typedef Arrangement_2::Halfedge_const_handle            ArrHedgeCHandle;
+typedef Arrangement_2::Ccb_halfedge_const_circulator    ArrCCBHedgeCCirc;
+typedef Arrangement_2::Face_const_iterator              ArrFaceCIter;
+typedef CGAL::Bbox_2                                    Bbox_2;
 #endif //INC_2_3_CGAL_DEFINES_H
