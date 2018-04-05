@@ -2,47 +2,16 @@
 
 Path::Path(const vector<Point_2> &path) : _path(path) {}
 
-Polygon_2 Path::hidamariSketchRobot(const Segment_2 &segment, const Polygon_2 &robot) const {
-    Polygon_2 robot1(robot);
-    if (!robot1.is_clockwise_oriented()) robot1.reverse_orientation();
-    Polygon_2 res;
-    Vector_2 DirectionVector = (segment.target() - segment.source()).perpendicular(CGAL::COUNTERCLOCKWISE);
-    FT maxValue, minValue;
-    Polygon_2::iterator maxPoint, minPoint;
-    bool first = true;
-    auto currentVertex = robot1.vertices_begin();
-    for (; currentVertex != robot1.vertices_end(); ++currentVertex) {
-        FT value = (*currentVertex - CGAL::ORIGIN) * DirectionVector;
-        if (first || minValue > value) {
-            minValue = value;
-            minPoint = currentVertex;
-        }
-        if (first || maxValue < value) {
-            maxValue = value;
-            maxPoint = currentVertex;
-        }
-        first = false;
+Polygon_2 Path::katamariDamacyRobot(const Segment_2 &segment, const Polygon_2 &robot) const {
+    vector<Point_2> points;
+    for (auto it = robot.vertices_begin(); it != robot.vertices_end(); ++it) {
+        points.push_back(*it + (segment.source() - CGAL::ORIGIN));
+        points.push_back(*it + (segment.target() - CGAL::ORIGIN));
     }
-    auto firstVertexVector = (*robot1.vertices_begin() - CGAL::ORIGIN) - (segment.source() - CGAL::ORIGIN);
-    currentVertex = robot1.vertices_begin();
-    while (currentVertex != maxPoint) ++currentVertex;
-    res.push_back(*currentVertex - firstVertexVector);
-    Vector_2 currentShift = (segment.target() - segment.source());
-    res.push_back(*currentVertex - firstVertexVector + currentShift);
-    ++currentVertex;
-    while (currentVertex != maxPoint) {
-        if (currentVertex == robot1.vertices_end()) {
-            currentVertex = robot1.vertices_begin();
-            continue;
-        }
-        if (currentVertex == minPoint) {
-            res.push_back(*currentVertex + currentShift - firstVertexVector);
-            currentShift = {0,0};
-        }
-        res.push_back(*currentVertex + currentShift - firstVertexVector);
-        ++currentVertex;
-    }
-    return res;
+
+    vector<Point_2> hull;
+    CGAL::convex_hull_2(points.begin(), points.end(), std::back_inserter(hull));
+    return Polygon_2(hull.begin(), hull.end());
 }
 
 vector<Polygon_2> Path::strechRobotToSegment(const Segment_2 &segment, const Polygon_2 &robot) {
@@ -55,8 +24,9 @@ vector<Polygon_2> Path::strechRobotToSegment(const Segment_2 &segment, const Pol
     vector<Polygon_2> realPartitions;
     for (auto &p:partition_polys) {
         Polygon_2 temp;
-        for (auto it = p.vertices_begin(); it != p.vertices_end(); ++it) temp.push_back({it->x(), it->y()});
-        realPartitions.push_back(hidamariSketchRobot(segment, temp));
+        for (auto it = p.vertices_begin(); it != p.vertices_end(); ++it)
+            temp.push_back(Point_2(it->x(), it->y()) - (robot[0] - CGAL::ORIGIN));
+        realPartitions.push_back(katamariDamacyRobot(segment, temp));
     }
     return realPartitions;
 }

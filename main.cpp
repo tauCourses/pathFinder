@@ -636,12 +636,9 @@ int main(int argc, char *argv[]) {
     }
 
     ifstream inputRobotFile(argv[1]), inputObstaclesFile(argv[2]);
-    if (!inputRobotFile.is_open() || !inputObstaclesFile.is_open())
-    {
-        if (!inputRobotFile.is_open())
-            cerr << "ERROR: Couldn't open file: " << argv[1] << endl;
-        if (!inputObstaclesFile.is_open())
-            cerr << "ERROR: Couldn't open file: " << argv[2] << endl;
+    if (!inputRobotFile.is_open() || !inputObstaclesFile.is_open()) {
+        if (!inputRobotFile.is_open()) cerr << "ERROR: Couldn't open file: " << argv[1] << endl;
+        if (!inputObstaclesFile.is_open()) cerr << "ERROR: Couldn't open file: " << argv[2] << endl;
         return -1;
     }
 
@@ -660,7 +657,7 @@ int main(int argc, char *argv[]) {
     auto result = Path(findPath(startPoint, endPoint, robot, obstacles));
     auto secs = timer.elapsed();
     cout << "Path created:      " << secs << " secs" << endl;
-    cout << "Path validation:   " << ((result.verify(startPoint, endPoint, robot, obstacles)) ? "Success!" : "Failure")
+    cout << "Path validation:   " << ((result.verify(startPoint, endPoint, robot, obstacles)) ? "Success!" : "Faulure")
          << endl;
 
     ofstream outputFile;
