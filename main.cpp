@@ -269,7 +269,6 @@ void addOuterRectBoundary( Arrangement_2&  arr,
 }
 //----------------------------------------------------------------------------
 // Iterating through a DCEL face boundary
-/*
 void print_ccb( ArrCCBHedgeCCirc circ )
 {
   ArrCCBHedgeCCirc curr = circ;
@@ -291,7 +290,7 @@ void print_ccb( ArrCCBHedgeCCirc circ )
 }
 
 
-bool print_arr_face(const ArrFaceCHandle&  f)
+void print_arr_face(const ArrFaceCHandle&  f)
 {
   // Print the outer boundary.
   if (f->is_unbounded())
@@ -308,7 +307,36 @@ bool print_arr_face(const ArrFaceCHandle&  f)
     print_ccb (*hi);
   }
 }
-*/
+
+void print_arrangement( const Arrangement_2& arr )
+{
+  Arrangement_2::Face_const_iterator iFace = arr.faces_begin();
+  for( ; iFace != arr.faces_end(); ++iFace )
+  {
+    if ((*iFace).is_unbounded())
+      continue;
+    ArrFaceCHandle f = iFace;
+    print_arr_face( f );
+  }
+}
+
+void print_segment( const Segment_2& s )
+{
+  const Point_2& p1 = s.source();
+  const Point_2& p2 = s.target();
+  double x1 = CGAL::to_double( p1[0] );
+  double y1 = CGAL::to_double( p1[1] );
+  double x2 = CGAL::to_double( p2[0] );
+  double y2 = CGAL::to_double( p2[1] );
+  cout << "[" << x1 << ", " << y1 << " - " << x2 << ", " << y2 << "]" << endl;
+}
+
+void print_point( const Point_2& p)
+{
+  double x1 = CGAL::to_double( p[0] );
+  double y1 = CGAL::to_double( p[1] );
+  cout << "(" << x1 << ", " << y1 << ")" << endl;
+}
 //----------------------------------------------------------------------------
 list<ArrFaceCHandle>::const_iterator 
 getTwoInstanceFace( const list<ArrFaceCHandle>& faces )
@@ -345,6 +373,8 @@ Point_2 getCenter( const ArrFaceCHandle& hCurrFace )
 }
 */
 //----------------------------------------------------------------------------
+// Assumption: [p1, p2] is vertical, i.e. p1[0] == p2[0], 
+// and all the forbidden edges are.
 bool isForbidden( const list<Segment_2>& ForbiddenEdges, 
                   const Point_2&    p1, 
                   const Point_2&    p2 )
@@ -352,8 +382,28 @@ bool isForbidden( const list<Segment_2>& ForbiddenEdges,
   list<Segment_2>::const_iterator iSeg = ForbiddenEdges.begin();
   for( ; iSeg != ForbiddenEdges.end(); ++iSeg )
   {
-    if( iSeg->has_on(p1) || iSeg->has_on(p2) )
-      return true;
+    const Segment_2& seg = *iSeg;
+    const Point_2& s = seg.source();
+    const Point_2& t = seg.target();
+    double yu = max(CGAL::to_double(s[1]), CGAL::to_double(t[1]) );
+    double yd = min(CGAL::to_double(s[1]), CGAL::to_double(t[1]) );
+    if( p1[0] == s[0] )
+    {
+      // Vertical collision.
+      double p1y = CGAL::to_double( p1[1] );
+      double p2y = CGAL::to_double( p2[1] );
+      bool b1 = yd < p1y && p1y < yu;
+      bool b2 = yd < p2y && p2y < yu; 
+      if( b1 || b2 )
+      {
+        cout << "=== Forbidden case: "<< endl;
+        print_point( p1 );
+        print_point( p2 );
+        print_segment( *iSeg );
+        cout << " ==== " << endl;
+        return true;
+      }
+    }
   }
   return false;
 }
@@ -440,7 +490,12 @@ void prepareDataInvokeDijkstra( const list<ArrFaceCHandle>& TrpzInPathFace,
     {
       vector<int> CurrPath;
       int nCurrLen = 0;
-      if( *iStartIdx != *iEndIdx )
+      if( pNeigMtrx[ *iStartIdx * nMtrxSize + *iEndIdx ] )
+      {
+        CurrPath.push_back( *iStartIdx );
+        CurrPath.push_back( *iEndIdx );
+      }
+      else if( *iStartIdx != *iEndIdx )
       {
         nCurrLen = dijkstra_compute_path( pNeigMtrx, nMtrxSize, 
                                           *iStartIdx, *iEndIdx, CurrPath );
@@ -533,6 +588,9 @@ vector<Point_2> findPath(const Point_2&      start,
   if( bPathFaceIsUnbounded )
       addOuterRectBoundary( arrConfSpace, robot, start, end );
 
+  print_arrangement( arrConfSpace );
+  cout << "=== arrConfSpace end here === " << endl;
+
   arrFaces.clear();
   arrFaces = getPathFaces( start, end, arrConfSpace );
   iPathFace = getTwoInstanceFace(arrFaces);
@@ -542,9 +600,19 @@ vector<Point_2> findPath(const Point_2&      start,
   list<Segment_2> ForbiddenEdges;
   insertFaceIntoArng( arrConfSpaceClean, hPathFace, ForbiddenEdges );
 
+
+  print_arrangement( arrConfSpaceClean );
+  cout << "=== arrConfSpaceClean end here === " << endl;
+
+
   Kernel* kernel = &traits;
   Arrangement_2 arrTrpzSplit(arrConfSpaceClean);
   vertical_decomposition(arrTrpzSplit, *kernel);
+
+  print_arrangement( arrTrpzSplit );
+  cout << "=== arrTrpzSplit end here === " << endl;
+
+
 
   int nPivotIdx = 0;
   list<ArrFaceCHandle> StartEndFaces = getPathFaces( start, end, 
