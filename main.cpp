@@ -439,8 +439,12 @@ void prepareDataInvokeDijkstra( const list<ArrFaceCHandle>& TrpzInPathFace,
     for(; iEndIdx != EndIdxs.end(); ++iEndIdx )
     {
       vector<int> CurrPath;
-      int nCurrLen = dijkstra_compute_path( pNeigMtrx, nMtrxSize, 
-                                            *iStartIdx, *iEndIdx, CurrPath );
+      int nCurrLen = 0;
+      if( *iStartIdx != *iEndIdx )
+      {
+        nCurrLen = dijkstra_compute_path( pNeigMtrx, nMtrxSize, 
+                                          *iStartIdx, *iEndIdx, CurrPath );
+      }
       if( 0 == RecordPath.size() || nCurrLen < RecordPath.size() )
       {
         RecordPath.clear();
@@ -501,6 +505,9 @@ vector<Point_2> findPath(const Point_2&      start,
                          const Polygon_2&    robot,
                          vector<Polygon_2>&  obstacles)
 {
+  if( 0 == obstacles.size() )
+    return vector<Point_2>({start,end});
+
   Polygon_2 invRobot = getInversedRobot( robot, start );
   vector<Polygon_with_holes_2> vecConfObst;
   for(const Polygon_2& obst : obstacles )
