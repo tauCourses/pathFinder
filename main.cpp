@@ -11,6 +11,7 @@
 using namespace std;
 
 void print_ccb (Arrangement_2::Ccb_halfedge_const_circulator circ);
+extern int dijkstra_compute_path(char*, int, int, int, vector<int>& );
 
 Point_2 loadPoint_2(std::ifstream &is) {
     Kernel::FT x, y;
@@ -41,6 +42,7 @@ vector<Polygon_2> loadPolygons(ifstream &is) {
 }
 
 //----------------------------------------------------------------------------
+/*
 void
 print_polygon( const Polygon_2& pgn )
 {
@@ -75,7 +77,7 @@ print_polygon( const Polygon_with_holes_2& pwh )
   }
   cout << "}" << endl;
 }
-
+*/
 //----------------------------------------------------------------------------
 Polygon_2 getInversedRobot( const Polygon_2& robot,
                             const Point_2&   refPoint )
@@ -114,10 +116,45 @@ bool insertPolygonIntoArng( Arrangement_2&              arr,
 }
 
 //----------------------------------------------------------------------------
+bool insertCcbIntoArng( Arrangement_2& arr,
+                        ArrCCBHedgeCCirc circ,
+                        list<Segment_2>& ForbiddenEdges )
+{
+  vector<Segment_2> vecSegm;
+  ArrCCBHedgeCCirc curr = circ;
+  do {
+    const HEdge& he = *curr;
+    Point_2 pt1 = he.source()->point();
+    Point_2 pt2 = he.target()->point();
+    Segment_2 s(pt1, pt2);
+    if( pt1[0] == pt2[0] )
+        ForbiddenEdges.push_back(s);
+    vecSegm.push_back( s );
+  } while (++curr != circ);
+  CGAL::insert( arr, vecSegm.begin(), vecSegm.end());
+  return true;
+}
+
+bool insertFaceIntoArng( Arrangement_2&  arr,
+                         ArrFaceCHandle  hFace,
+                         list<Segment_2>& ForbiddenEdges )
+{
+  if( hFace->is_unbounded() )
+    return false;
+  insertCcbIntoArng( arr, hFace->outer_ccb(), ForbiddenEdges );
+  
+  Arrangement_2::Hole_const_iterator hi;
+  for( hi = hFace->holes_begin(); hi != hFace->holes_end(); ++hi) 
+    insertCcbIntoArng( arr, *hi, ForbiddenEdges );
+  return true; 
+}
+
+//----------------------------------------------------------------------------
 list<ArrFaceCHandle>
 getPathFaces( const Point_2&        start,
               const Point_2&        end,
-              const Arrangement_2&  arr )
+              const Arrangement_2&  arr,
+              int*                  pPivotIdx = NULL )
 {
   list<Point_2> pts;
   pts.push_back(start);
@@ -125,39 +162,53 @@ getPathFaces( const Point_2&        start,
   std::list<QueryResult>  queryRes;
   locate(arr, pts.begin(), pts.end(), std::back_inserter(queryRes));
   list<QueryResult>::const_iterator it;
-  int i = 0;
+  int i, nPivotIdx = 0;
   list<ArrFaceCHandle>  res;
   for( it = queryRes.begin(); it != queryRes.end(); ++it, ++i)
   {
-    //cout << "The point (" << it->first << ") is located ";
+    bool bPushBack = it->first == end;
     if( const ArrFaceCHandle* pResFace = boost::get<ArrFaceCHandle>(&(it->second)) )
     {
-      res.push_back( *pResFace );
-      cout << "Face found" << endl;
+      ArrFaceCHandle hFace = *pResFace;
+      if( bPushBack )
+      {
+        nPivotIdx = res.size();
+        res.push_back( hFace );
+      }
+      else
+      {
+        res.insert( res.begin(), hFace );
+        nPivotIdx = 1;
+      }
     }
     else if( const ArrHedgeCHandle* e = boost::get<ArrHedgeCHandle>(&(it->second)))
     {
       ArrFaceCHandle hLeftFace  = (*e)->face();
       ArrFaceCHandle hRightFace = (*e)->twin()->face();
-      res.push_back( hLeftFace );
-      res.push_back( hRightFace );
-      const Point_2 src = (*e)->source()->point();
-      const Point_2 trg = (*e)->target()->point();
-      double x0 = CGAL::to_double(src[0]);
-      double y0 = CGAL::to_double(src[1]);
-      double x1 = CGAL::to_double(trg[0]);
-      double y1 = CGAL::to_double(trg[1]);
-      cout << "on an edge: [" << x0 << ", " << y0 
-           << "] -> [" << x1 << ", " << y1 << "]" << std::endl;
+      if( bPushBack )
+      {
+        nPivotIdx = res.size();
+        res.push_back( hLeftFace );
+        res.push_back( hRightFace );
+      }
+      else
+      {
+        res.insert( res.begin(), hLeftFace );
+        res.insert( res.begin(), hRightFace );
+        nPivotIdx = 2;
+      }
     }
     else if (const ArrVrtxCHandle* v = 
                                  boost::get<ArrVrtxCHandle>(&(it->second)))
     { 
       cout << "on "
                 << (((*v)->is_isolated()) ? "an isolated" : "a")
-                << " vertex: " << (*v)->point() << std::endl;       
+                << " vertex: " << (*v)->point() << std::endl;
+      cout << "Not implemented yet" << endl;
     }
   }
+  if( pPivotIdx != NULL )
+    *pPivotIdx = nPivotIdx;
   return res;
 }
 
@@ -171,7 +222,7 @@ void updateMinMax( const Point_2& pt,
   minx = min(x, minx);
   maxx = max(x, maxx);
   miny = min(y, miny);
-  maxy = max(x, maxy);
+  maxy = max(y, maxy);
 }
 
 void updateBoundaryRanges( ArrCCBHedgeCCirc circ, 
@@ -180,7 +231,7 @@ void updateBoundaryRanges( ArrCCBHedgeCCirc circ,
 {
   ArrCCBHedgeCCirc curr = circ;
   do {
-    const HEdge& he = *curr;//->handle();
+    const HEdge& he = *curr;
     const Point_2& pt = he.source()->point();
     updateMinMax( pt, minx, miny, maxx, maxy );
   } while (++curr != circ);
@@ -202,7 +253,7 @@ void addOuterRectBoundary( Arrangement_2&  arr,
 
   updateMinMax( start, minx, miny, maxx, maxy );
   updateMinMax( end, minx, miny, maxx, maxy );
-
+ 
   Arrangement_2::Hole_const_iterator  hi;
   for( hi = ff->holes_begin(); hi != ff->holes_end(); ++hi ) 
     updateBoundaryRanges( *hi, minx, miny, maxx, maxy );
@@ -218,6 +269,7 @@ void addOuterRectBoundary( Arrangement_2&  arr,
 }
 //----------------------------------------------------------------------------
 // Iterating through a DCEL face boundary
+/*
 void print_ccb( ArrCCBHedgeCCirc circ )
 {
   ArrCCBHedgeCCirc curr = circ;
@@ -256,6 +308,7 @@ bool print_arr_face(const ArrFaceCHandle&  f)
     print_ccb (*hi);
   }
 }
+*/
 //----------------------------------------------------------------------------
 list<ArrFaceCHandle>::const_iterator 
 getTwoInstanceFace( const list<ArrFaceCHandle>& faces )
@@ -272,37 +325,175 @@ getTwoInstanceFace( const list<ArrFaceCHandle>& faces )
 }
 
 //----------------------------------------------------------------------------
-Point_2 getCenter( Arrangement_2::Face CurrFace )
+/*
+Point_2 getCenter( const ArrFaceCHandle& hCurrFace )
 {
-  ArrCCBHedgeCCirc circ = CurrFace.outer_ccb();
-  cout << "Here2" << endl;
-
+  ArrCCBHedgeCCirc circ = hCurrFace->outer_ccb();
   ArrCCBHedgeCCirc curr = circ;
+  double x = 0.0;
+  double y = 0.0;
+  int n = 0;
   vector<Point_2> pts;
   do {
-    const HEdge he = *curr;//->handle();
-    cout << "Here 3" << endl;
-    Arrangement_2::Vertex v = *(he.target());
-    Point_2 pt = v.point();
-    cout << "Here 4" << endl;
-    pts.push_back( pt );
+    const HEdge& he = *curr;
+    Point_2 pt = he.source()->point();
+    x += CGAL::to_double( pt[0] );
+    y += CGAL::to_double( pt[1] );
+    ++n;
   } while (++curr != circ);
-  return CGAL::centroid( pts.begin(), pts.end() );  
+  return Point_2( x/n, y/n);  
+}
+*/
+//----------------------------------------------------------------------------
+bool isForbidden( const list<Segment_2>& ForbiddenEdges, 
+                  const Point_2&    p1, 
+                  const Point_2&    p2 )
+{
+  list<Segment_2>::const_iterator iSeg = ForbiddenEdges.begin();
+  for( ; iSeg != ForbiddenEdges.end(); ++iSeg )
+  {
+    if( iSeg->has_on(p1) || iSeg->has_on(p2) )
+      return true;
+  }
+  return false;
 }
 //----------------------------------------------------------------------------
-void createGraph( Arrangement_2&   arrConfSpace, 
-                  Arrangement_2&   arrTrpzSplit,
-                  ArrFaceCHandle&  hPathFace )
+// Assumption: Faces are bounded.
+
+bool twoFacesHaveCommonEdge( const ArrFaceCHandle& hFace1,
+                             const ArrFaceCHandle& hFace2, 
+                             double* px, double* py,
+                             const list<Segment_2>& ForbiddenEdges )
 {
-  list<Point_2> TrpzCntrs;
-  Arrangement_2::Face_const_iterator iTrpzFaces = arrTrpzSplit.faces_begin(); 
-  cout << "arrTrpzSplit.faces() = " << arrTrpzSplit.number_of_faces() << endl;
+  if( hFace1->is_unbounded() || hFace2->is_unbounded() )
+      return false;
+
+  ArrCCBHedgeCCirc circ1 = hFace1->outer_ccb();
+  ArrCCBHedgeCCirc circ2 = hFace2->outer_ccb();
+  ArrCCBHedgeCCirc curr1 = circ1;
+  do 
+  {
+    ArrHedgeCHandle hHe1 = curr1;
+    ArrCCBHedgeCCirc curr2 = circ2;
+    do
+    {
+      ArrHedgeCHandle hHe2 = curr2;
+      Point_2 p1s = hHe1->source()->point();
+      Point_2 p2t = hHe2->target()->point();
+      Point_2 p1t = hHe1->target()->point();
+      Point_2 p2s = hHe2->source()->point();
+ 
+      if( p1s == p2t && p1t == p2s && p1s[0] == p1t[0] )
+      {
+        if( isForbidden( ForbiddenEdges, p1s, p1t ) )
+          continue;
+        //It has to be vertical
+        double x1 = CGAL::to_double( p1s[0] );
+        double y1 = CGAL::to_double( p1s[1] );
+        double x2 = CGAL::to_double( p1t[0] );
+        double y2 = CGAL::to_double( p1t[1] );
+        *px = (x1 + x2)/ 2.0;
+        *py = (y1 + y2)/ 2.0;
+        return true;
+      }
+    }while( ++curr2 != circ2 );
+  }while( ++curr1 != circ1 );
+  return false;
+}
+//----------------------------------------------------------------------------
+void prepareDataInvokeDijkstra( const list<ArrFaceCHandle>& TrpzInPathFace,
+                                const list<int>&            StartIdxs,
+                                const list<int>&            EndIdxs,
+                                const list<Segment_2>&      ForbiddenEdges,
+                                vector<Point_2>&            ResPath )
+{
+  int nMtrxSize = TrpzInPathFace.size();
+  list<ArrFaceCHandle>::const_iterator fi = TrpzInPathFace.begin();
+  int i = 0, j = 0;
+  char* pNeigMtrx = new char[nMtrxSize * nMtrxSize];
+  Point_2* pNeigCntrs = new Point_2[nMtrxSize * nMtrxSize];
+  for( ; fi != TrpzInPathFace.end(); ++fi, ++i )
+  {
+    list<ArrFaceCHandle>::const_iterator si = fi;
+    for( ++si, j = i+1; si != TrpzInPathFace.end(); ++si, ++j )
+    {
+      double cx, cy;
+      Point_2 CurrCntr;
+      bool bHaveCommon = twoFacesHaveCommonEdge( *fi, *si, &cx, &cy, 
+                                                 ForbiddenEdges );
+      pNeigMtrx[i*nMtrxSize + j] = bHaveCommon;
+      pNeigMtrx[j*nMtrxSize + i] = bHaveCommon;
+       if( bHaveCommon )
+      {
+        Point_2 CurrCntr(cx, cy);
+        pNeigCntrs[i*nMtrxSize + j] = CurrCntr;
+        pNeigCntrs[j*nMtrxSize + i] = CurrCntr;
+      }
+    }
+  }
+  list<int>::const_iterator iStartIdx = StartIdxs.begin();
+  vector<int> RecordPath;
+  for( ; iStartIdx != StartIdxs.end(); ++iStartIdx )
+  {
+    list<int>::const_iterator iEndIdx = EndIdxs.begin();
+    for(; iEndIdx != EndIdxs.end(); ++iEndIdx )
+    {
+      vector<int> CurrPath;
+      int nCurrLen = dijkstra_compute_path( pNeigMtrx, nMtrxSize, 
+                                            *iStartIdx, *iEndIdx, CurrPath );
+      if( 0 == RecordPath.size() || nCurrLen < RecordPath.size() )
+      {
+        RecordPath.clear();
+        RecordPath.insert( RecordPath.begin(), CurrPath.begin(), CurrPath.end() );
+      }
+    }
+  }
+  vector<int>::const_iterator iPrevIdx = RecordPath.begin();
+  vector<int>::const_iterator iCurrIdx = RecordPath.begin();
+  for( ++iCurrIdx; iCurrIdx != RecordPath.end(); ++iCurrIdx, ++iPrevIdx )
+  {
+    Point_2 CurrPt = pNeigCntrs[*iPrevIdx * nMtrxSize + *iCurrIdx];
+    ResPath.push_back(CurrPt);
+  }
+  delete[] pNeigCntrs;
+  delete[] pNeigMtrx;
+}
+//----------------------------------------------------------------------------
+void applyGraphSearch( const Arrangement_2&        arrConfSpace,
+                       const Arrangement_2&        arrTrpzSplit,
+                       const list<Segment_2>&      ForbiddenEdges,
+                       const list<ArrFaceCHandle>& StartEndFaces,
+                       int                         nPivotIdx,
+                       vector<Point_2>&            ResPath )
+{
+  list<int>            StartIdxs;
+  list<int>            EndIdxs;
+  list<ArrFaceCHandle> AllTrpz;
+  Arrangement_2::Face_const_iterator iTrpzFaces = arrTrpzSplit.faces_begin();
   for( ; iTrpzFaces != arrTrpzSplit.faces_end(); ++iTrpzFaces )
   {
-    Arrangement_2::Face f = *iTrpzFaces;
-    TrpzCntrs.push_back( getCenter( f ) );
+    if ((*iTrpzFaces).is_unbounded())
+      continue;
+    ArrFaceCHandle f = iTrpzFaces;
+    AllTrpz.push_back( f );
+    list<ArrFaceCHandle>::const_iterator iSEF = StartEndFaces.begin();
+    for(; iSEF != StartEndFaces.end(); ++iSEF )
+    {
+      if( f == *iSEF )
+      {
+        int nIdx = AllTrpz.size()-1;
+        if( StartIdxs.size() < nPivotIdx )
+        {
+          StartIdxs.push_back( nIdx );
+        }
+        else
+        {
+          EndIdxs.push_back( nIdx );
+        }
+      }
+    }
   }
-  cout << "TrpzCntrs = " << TrpzCntrs.size() << endl;
+  prepareDataInvokeDijkstra( AllTrpz, StartIdxs, EndIdxs, ForbiddenEdges, ResPath );
 }
 //----------------------------------------------------------------------------
 vector<Point_2> findPath(const Point_2&      start,
@@ -317,7 +508,6 @@ vector<Point_2> findPath(const Point_2&      start,
     Polygon_with_holes_2 currConfObst = CGAL::minkowski_sum_2( obst,
                                                                invRobot );
     vecConfObst.push_back( currConfObst );
-    //print_polygon(currConfObst.outer_boundary());
   }
 
   CGAL::Arr_segment_traits_2<Kernel> traits;
@@ -336,29 +526,31 @@ vector<Point_2> findPath(const Point_2&      start,
   if( bPathFaceIsUnbounded )
       addOuterRectBoundary( arrConfSpace, robot, start, end );
 
-  //print_arr_face(*(arrFaces.first));
-  //print_arr_face(*(arrFaces.second));
+  arrFaces.clear();
+  arrFaces = getPathFaces( start, end, arrConfSpace );
+  iPathFace = getTwoInstanceFace(arrFaces);
+  hPathFace = *iPathFace;
 
-  cout << "Query points are in the same Arrangement face. "
-       << "A solution exists" << endl;
-  //
-  //... to be continued...
-  //
+  Arrangement_2 arrConfSpaceClean(&traits);
+  list<Segment_2> ForbiddenEdges;
+  insertFaceIntoArng( arrConfSpaceClean, hPathFace, ForbiddenEdges );
+
   Kernel* kernel = &traits;
-  Arrangement_2 arrTrpzSplit(arrConfSpace);
+  Arrangement_2 arrTrpzSplit(arrConfSpaceClean);
   vertical_decomposition(arrTrpzSplit, *kernel);
 
-  list<ArrFaceCHandle> vertArrFaces = getPathFaces(start, end, arrTrpzSplit);
-  print_arr_face(*vertArrFaces.begin());
-  print_arr_face(*(++vertArrFaces.begin()));
-  print_arr_face(*(++(++vertArrFaces.begin())));
+  int nPivotIdx = 0;
+  list<ArrFaceCHandle> StartEndFaces = getPathFaces( start, end, 
+                                                     arrTrpzSplit,
+                                                     &nPivotIdx );
 
-  createGraph(arrConfSpace, arrTrpzSplit, hPathFace );
-  //print_arr_face(*(vertArrFaces.second));
-  //cout << *(vertArrFaces.first) << endl;
-  cout << "==========================" << endl;
-  //cout << arr << endl;
-  return vector<Point_2>({start,{1.71,5.57},{23.84,5.94},{21.21,29.17}, end});
+  vector<Point_2> ResPath;
+  applyGraphSearch( arrConfSpaceClean, arrTrpzSplit, ForbiddenEdges, 
+                    StartEndFaces, nPivotIdx, ResPath );
+  ResPath.insert( ResPath.begin(), start );
+  ResPath.push_back(end);
+  return ResPath;
+  //return vector<Point_2>({start,{1.71,5.57},{23.84,5.94},{21.21,29.17}, end});
 }
 //----------------------------------------------------------------------------
 
