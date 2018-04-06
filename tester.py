@@ -12,11 +12,11 @@ print("run tests")
 robots = [join(dir, f) for f in listdir(dir) if isfile(join(dir, f)) and join(dir, f).startswith(dir + '/robot')]
 obstacles = [join(dir, f) for f in listdir(dir) if isfile(join(dir, f)) and join(dir, f).startswith(dir + '/obstacles')]
 
-robots.sort()
-obstacles.sort()
+robots.sort(key=lambda s: int(s.split('robot')[1]))
+obstacles.sort(key=lambda s: int(s.split('obstacles')[1]))
 
 for test in zip(robots, obstacles):
-    if len(cmds) != 0 and not test[0][-1] in cmds:
+    if len(cmds) != 0 and not test[0].split('robot')[1] in cmds:
         continue
 
     print('test %s' % str(test))
@@ -36,9 +36,12 @@ for test in zip(robots, obstacles):
             if 'Success' in line:
                 print('PASSED')
             else:
-                print('FAILED %s' % line.split('FAILURE:',1)[1])
+                try:  # sometimes there is a failure reason:
+                    print('FAILED %s' % line.split('FAILURE:',1)[1])
+                except:
+                    print('FAILED')
             break
 
-    p = Popen(['python3.6', 'PreviewPy.py', test[0], test[1], 'output1'], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    p = Popen(['python3', 'PreviewPy.py', test[0], test[1], 'output1'], stdin=PIPE, stdout=PIPE, stderr=PIPE)
     output, err = p.communicate()
     time.sleep(1)
