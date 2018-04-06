@@ -1,8 +1,11 @@
+import sys
 from subprocess import Popen, PIPE
 from os import listdir
 from os.path import isfile, join
 from filecmp import cmp
 import time
+
+cmds = sys.argv[1:]
 
 dir = 'tests'
 print("run tests")
@@ -13,17 +16,29 @@ robots.sort()
 obstacles.sort()
 
 for test in zip(robots, obstacles):
+    if len(cmds) != 0 and not test[0][-1] in cmds:
+        continue
+
+    print('test %s' % str(test))
+
     p = Popen(['./PathFinder', test[0], test[1], 'output1'], stdin=PIPE, stdout=PIPE, stderr=PIPE)
     output, err = p.communicate()
     time.sleep(0.1)
 
-    print('test %s' % str(test))
     if p.returncode != 0:
         print('FAILED %s' % str(err.decode()))
         print('error code %d' % p.returncode)
         continue
 
-    print('PASSED')
+    lines = output.decode().split('\n')
+    for line in lines:
+        if 'Path validation:' in line:
+            if 'Success' in line:
+                print('PASSED')
+            else:
+                print('FAILED %s' % line.split('FAILURE:',1)[1])
+            break
+
     p = Popen(['python3.6', 'PreviewPy.py', test[0], test[1], 'output1'], stdin=PIPE, stdout=PIPE, stderr=PIPE)
     output, err = p.communicate()
     time.sleep(1)
