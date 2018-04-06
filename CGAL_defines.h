@@ -11,6 +11,7 @@
 #include <CGAL/Vector_2.h>
 #include <CGAL/Segment_2.h>
 #include <CGAL/Polygon_2.h>
+#include <CGAL/Polygon_set_2.h>
 #include <CGAL/minkowski_sum_2.h>
 #include <CGAL/Arrangement_2.h>
 #include <CGAL/centroid.h>
@@ -27,8 +28,11 @@ typedef typename CGAL::Polygon_2<Kernel> Polygon_2;
 typedef typename CGAL::Polygon_with_holes_2<Kernel>         Polygon_with_holes_2;
 typedef typename CGAL::Polygon_with_holes_2<Kernel>::Hole_const_iterator 
                                                             HoleCIter;
-typedef typename CGAL::Arrangement_2<CGAL::Arr_segment_traits_2<Kernel>> 
-                                                            Arrangement_2;
+typedef CGAL::Polygon_set_2<Kernel> Polygon_set_2;
+typedef Polygon_set_2::Arrangement_2 Arrangement_2;
+
+//typedef typename CGAL::Arrangement_2<CGAL::Arr_segment_traits_2<Kernel>> 
+//                                                            Arrangement_2;
 typedef typename Polygon_2::Vertex_iterator                 VrtxIter;
 typedef typename Polygon_2::Vertex_const_iterator           VrtxCIter;
 typedef typename Polygon_2::Edge_const_iterator             EdgeIter;
