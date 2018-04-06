@@ -7,6 +7,7 @@
 
 #include "CGAL_defines.h"
 #include <CGAL/Origin.h>
+#include <CGAL/convex_hull_2.h>
 #include <CGAL/Polygon_with_holes_2.h>
 #include <CGAL/Partition_traits_2.h>
 #include <CGAL/partition_2.h>
@@ -25,7 +26,7 @@ private:
     vector<Point_2> _badPath;
     vector<int> _badObstacles;
 
-    Polygon_2 hidamariSketchRobot(const Segment_2 &segment, const Polygon_2 &robot) const;
+    Polygon_2 katamariDamacyRobot(const Segment_2 &segment, const Polygon_2 &robot) const;
     vector<Polygon_2> strechRobotToSegment(const Segment_2 &segment, const Polygon_2 &robot);
     bool verifyLine(const Segment_2 &segment, const Polygon_2 &robot,
                     vector<Polygon_2> &obstacles) ;
