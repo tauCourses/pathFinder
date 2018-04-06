@@ -10,7 +10,6 @@
 
 using namespace std;
 
-
 Point_2 loadPoint_2(std::ifstream &is) {
     Kernel::FT x, y;
     is >> x >> y;

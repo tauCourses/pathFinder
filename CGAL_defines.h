@@ -41,6 +41,10 @@ typedef typename Arrangement_2::Face_handle                     Face_handle;
 typedef typename Arrangement_2::Halfedge_handle                 Halfedge_handle;
 typedef typename Arrangement_2::Halfedge_const_handle           Halfedge_const_handle;
 typedef typename Arrangement_2::X_monotone_curve_2              X_monotone_curve_2;
+typedef typename Arrangement_2::Vertex_const_iterator           Arr_VrtxCIter;
+typedef typename Arrangement_2::Ccb_halfedge_const_circulator   ccb_haledge_circulator;
+typedef typename Arrangement_2::Face_iterator                   Face_iterator;
+
 
 typedef typename CGAL::Dual<Arrangement_2> Dual;
 

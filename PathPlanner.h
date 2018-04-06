@@ -3,31 +3,17 @@
 
 #include <vector>
 #include <list>
+#include <map>
 
 #include "CGAL_defines.h"
 
-#include <boost/property_map/property_map.hpp>
+/*#include <boost/property_map/property_map.hpp>
 #include <boost/graph/breadth_first_search.hpp>
 #include <boost/graph/visitors.hpp>
-#include <boost/graph/filtered_graph.hpp>
+#include <boost/graph/filtered_graph.hpp>*/
 
 
 using namespace std;
-
-class Found_vertex_exception : public std::exception {};
-
-template <typename Vertex> class Find_vertex_visitor {
-private:
-    Vertex m_goal;
-public:
-    typedef boost::on_finish_vertex            event_filter;
-
-    Find_vertex_visitor(Vertex v) : m_goal(v) {}
-
-    template <class Graph> void operator()(Vertex v, const Graph& g)
-    { if (v == m_goal) throw Found_vertex_exception(); }
-};
-
 
 class Less_than_handle {
 public:
@@ -35,17 +21,9 @@ public:
     bool operator()(Type s1, Type s2) const { return (&(*s1) < &(*s2)); }
 };
 
-typedef std::map<Face_handle, Face_handle, Less_than_handle>     Preds_map;
-typedef std::map<Face_handle, Halfedge_handle, Less_than_handle> Edges_map;
+typedef map<Face_handle, Face_handle, Less_than_handle>     Preds_map;
+typedef map<Face_handle, Halfedge_handle, Less_than_handle> Edges_map;
 
-
-class FreeSpaceFace {
-public:
-    bool operator()(Face_handle f) const
-    { f->contained(); }
-    bool operator()(Face_const_handle f) const
-    { f->contained(); }
-};
 
 class polygon_split_observer : public CGAL::Arr_observer<Arrangement_2>
 {
@@ -68,6 +46,7 @@ private:
     Face_handle end_face;
 
     //bfs maps:
+    list<Face_handle> queue;
     Preds_map preds_map;
     Edges_map edges_map;
 
@@ -83,10 +62,19 @@ private:
     Point_2 point_in_vertical_trapezoid(Face_const_handle f, const Arrangement_2& arr, const Kernel& ker);
     vector<Point_2> reversedPath(Arrangement_2& arr, Kernel& ker);
 
+    void printFace(Face_handle face);
+
+    void addFaces(Arrangement_2& arr, Face_handle face);
+
 public:
     PathPlanner(const Point_2 start, const Point_2 end, const Polygon_2 &robot, vector<Polygon_2> &obstacles);
 
     vector<Point_2> planPath();
+
+    void addFrame(Arrangement_2 &arr);
+
+    void printArr(Arrangement_2 &arr);
+
 
 };
 

@@ -14,11 +14,7 @@ PathPlanner::PathPlanner(const Point_2 start, const Point_2 end, const Polygon_2
 void PathPlanner::setInversedRobot() {
     VrtxCIter vi = this->robot.vertices_begin();
     for (; vi != this->robot.vertices_end(); ++vi) {
-        //movedPoint is the robot Point moved to the new origin(ref point)
-        Point_2 movedPoint = {(*vi)[0] + this->start[0] - this->robot[0][0],
-                              (*vi)[1] + this->start[1] - this->robot[0][1]};
-        this->invRobot.push_back({movedPoint[0] - 2 * (movedPoint[0] - this->start[0]),
-                       movedPoint[1] - 2 * (movedPoint[1] - this->start[1])});
+        this->invRobot.push_back(Point_2(- ((*vi)[0] - this->robot[0][0]), - ((*vi)[1] - this->robot[0][1])));
     }
     CGAL::Orientation orient = this->invRobot.orientation();
     if (CGAL::CLOCKWISE == orient)
@@ -131,41 +127,47 @@ Face_handle PathPlanner::get_face(Arrangement_2& arr, const Landmarks_pl &pl, co
     throw "point is not in legal position";
 }
 
+void PathPlanner::addFaces(Arrangement_2& arr, Face_handle face) {
+    ccb_haledge_circulator first = face->outer_ccb();
+    ccb_haledge_circulator circ = first;
+    do {
+        Halfedge_const_handle temp = circ;
+        Face_handle twinFace = arr.non_const_handle(temp->twin()->face());
+        if(!twinFace->contained())
+            continue;
+        auto search = preds_map.find(twinFace);
+        if(search != preds_map.end()) //if face already exist - we already scan it in BFS no need to do anything
+            continue;
+
+        preds_map[twinFace] = face;
+        edges_map[twinFace] = arr.non_const_handle(temp);
+        queue.push_back(twinFace);
+    } while (++circ != first);
+}
+
 void PathPlanner::setFacesPath(Arrangement_2& arr)
 {
     typedef CGAL::Arr_face_index_map<Arrangement_2>                 Face_index_map;
 
     Landmarks_pl pl(arr);
+
     start_face = get_face(arr, pl, this->start);
     end_face = get_face(arr, pl, this->end);
-    Dual dual(arr);
-    boost::filtered_graph<Dual, boost::keep_all, FreeSpaceFace> graph(dual, boost::keep_all());
 
-    Face_index_map                   index_map(arr);
-    Preds_map                        preds_map;
-    Edges_map                        edges_map;
-    Find_vertex_visitor<Face_handle> find_vertex_visitor(end_face);
+    preds_map[start_face] = Face_handle();
+    edges_map[start_face] = Halfedge_handle();
 
-    try {
-        preds_map[start_face] = Face_handle();
-        edges_map[start_face] = Halfedge_handle();
-        boost::breadth_first_search(graph, start_face,
-                                    boost::vertex_index_map(index_map).visitor
-                                            (boost::make_bfs_visitor(
-                                                    make_pair(
-                                                            find_vertex_visitor,
-                                                            make_pair(
-                                                                    record_predecessors(
-                                                                            boost::make_assoc_property_map(preds_map),
-                                                                            boost::on_tree_edge()),
-                                                                    record_edge_predecessors(
-                                                                            boost::make_assoc_property_map(edges_map),
-                                                                            boost::on_tree_edge()))))));
+    this->queue.push_back(start_face);
+    while(!queue.empty())
+    {
+        Face_handle face = queue.front();
+        queue.pop_front();
+        if(face == end_face)
+            return;
 
-        // If there is a path then an exception should have been thrown.
-        throw "no path found!";
+        this->addFaces(arr, face);
     }
-    catch(Found_vertex_exception e) {}
+    throw "no path found!";
 }
 
 vector<Point_2> PathPlanner::reversedPath(Arrangement_2& arr, Kernel& ker){
@@ -178,16 +180,52 @@ vector<Point_2> PathPlanner::reversedPath(Arrangement_2& arr, Kernel& ker){
         path.push_back(point_in_vertical_trapezoid(f, arr, ker));
         Halfedge_handle he = edges_map[f];
         if (he != Halfedge_handle())
-            // Add the midpoint of the associated vertical segment.
             path.push_back(midp(he->source()->point(), he->target()->point()));
         f = this->preds_map[f];
     } while (f != Face_handle());
     path.push_back(this->start);
 
+    return path;
+}
+
+void PathPlanner::printFace(Face_handle face)
+{
+    ccb_haledge_circulator first = face->outer_ccb();
+    ccb_haledge_circulator circ = first;
+    do {
+        Halfedge_const_handle temp = circ;
+        cout << temp->source()->point() << " ";
+    } while (++circ != first);
+    cout << endl;
+}
+
+void PathPlanner::printArr(Arrangement_2& arr)
+{
+    cout << "number of faces - " << arr.number_of_faces() << endl;
+    Face_iterator it = arr.faces_begin();
+    for(;it!=arr.faces_end();it++)
+    {
+        if(it != arr.unbounded_face()) {
+            ccb_haledge_circulator first = it->outer_ccb();
+            ccb_haledge_circulator circ = first;
+            do {
+                Halfedge_const_handle temp = circ;
+                cout << temp->source()->point() << " ";
+            } while (++circ != first);
+            cout << endl;
+        } else
+            cout << "unboanded!\n";
+        if(it->contained())
+            cout << "contained!" <<endl;
+        else
+            cout << "not contained!" <<endl;
+    }
 }
 
 vector<Point_2> PathPlanner::planPath() {
     Arrangement_2 arr = this->freeSpace.arrangement(); //set the free space as arrangment
+    this->addFrame(arr);
+
     Polygon_set_2::Traits_2 traits;
     polygon_split_observer observer; //ensure that when face split two side safe their property(inside/outside)
     observer.attach(arr);
@@ -197,12 +235,10 @@ vector<Point_2> PathPlanner::planPath() {
 
     setFacesPath(arr);
     vector<Point_2> path, reversedPath = this->reversedPath(arr, *ker);
-    for(int i = static_cast<int>(reversedPath.size()); i >= 0; i--)
-        path.push_back(reversedPath[i]);
-    //create points path from faceNode path:
+    for(int i = static_cast<int>(reversedPath.size())-1; i >= 0; i--)
+        path.push_back(Point_2(reversedPath[i]));
 
-    //reverse path - from start to end
-    return reversedPath;//vector<Point_2>({start,{1.71,5.57},{23.84,5.94},{21.21,29.17}, end});
+    return path;
 }
 
 Point_2 PathPlanner::point_in_vertical_trapezoid(Face_const_handle f, const Arrangement_2& arr, const Kernel& ker)
@@ -212,15 +248,11 @@ Point_2 PathPlanner::point_in_vertical_trapezoid(Face_const_handle f, const Arra
     const typename Kernel::Construct_midpoint_2 midpoint =
             ker.construct_midpoint_2_object();
 
-    // Locate the two edges along the face boundary that are not associated
-    // with vertical segments, such that one lies on the upper boundary of the
-    // face and the other on its lower boundary. Note that these two edges must
-    // have opposite directions.
     Halfedge_const_handle he1, he2;
     CGAL::Arr_halfedge_direction direction;
     bool found = false;
-    typename Arrangement_2::Ccb_halfedge_const_circulator first = f->outer_ccb();
-    typename Arrangement_2::Ccb_halfedge_const_circulator circ = first;
+    ccb_haledge_circulator first = f->outer_ccb();
+    ccb_haledge_circulator circ = first;
     do {
         if (!is_vertical(circ->curve())) {
             // The current edge is not vertical: assign it as either he1 or he2.
@@ -240,4 +272,45 @@ Point_2 PathPlanner::point_in_vertical_trapezoid(Face_const_handle f, const Arra
     // Take the midpoint of the midpoints of he1 and he2.
     return midpoint(midpoint(he1->source()->point(), he1->target()->point()),
                     midpoint(he2->source()->point(), he2->target()->point()));
+}
+
+void PathPlanner::addFrame(Arrangement_2 &arr) {
+    FT mostLeft = this->start[0] < this->end[0] ? this->start[0] : this->end[0];
+    FT mostRight = this->start[0] < this->end[0] ? this->end[0] : this->start[0];
+    FT mostUp = this->start[1] < this->end[1] ? this->end[1] : this->start[1];
+    FT mostDown = this->start[1] < this->end[1] ? this->start[1] : this->end[1];
+
+    Arr_VrtxCIter vit;
+    for (vit = arr.vertices_begin(); vit != arr.vertices_end(); ++vit)
+    {
+        if(vit->point()[0] < mostLeft)
+            mostLeft = vit->point()[0];
+        if(vit->point()[0] > mostRight)
+            mostRight = vit->point()[0];
+        if(vit->point()[1] < mostDown)
+            mostDown = vit->point()[1];
+        if(vit->point()[1] > mostUp)
+            mostUp = vit->point()[1];
+    }
+    Point_2 upperLeft = {mostLeft - 1, mostUp + 1};
+    Point_2 upperRight = {mostRight +1 , mostUp + 1};
+    Point_2 lowerRight = {mostRight + 2, mostDown -1};
+    Point_2 lowerLeft = {mostLeft - 2, mostDown -1};
+
+
+
+    Segment_2 upperBound(upperLeft, upperRight),
+            rightBound(upperRight, lowerRight),
+            lowerBound(lowerRight, lowerLeft),
+            leftBound(lowerLeft, upperLeft);
+
+    Halfedge_handle tempEdge = arr.insert_in_face_interior(upperBound, arr.unbounded_face());
+    Vertex_handle startVertex = tempEdge->source();
+    Vertex_handle endVertex = tempEdge->target();
+    tempEdge = arr.insert_from_left_vertex(rightBound, tempEdge->target());
+    tempEdge = arr.insert_from_right_vertex(lowerBound, tempEdge->target());
+    tempEdge = arr.insert_at_vertices(leftBound, tempEdge->target(), startVertex);
+
+    tempEdge->twin()->face()->set_contained(true);
+    arr.unbounded_face()->set_contained(false);
 }
