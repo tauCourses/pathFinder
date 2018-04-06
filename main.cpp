@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
     auto result = Path(findPath(startPoint, endPoint, robot, obstacles));
     auto secs = timer.elapsed();
     cout << "Path created:      " << secs << " secs" << endl;
-    cout << "Path validation:   " << ((result.verify(startPoint, endPoint, robot, obstacles)) ? "Success!" : "Failure")
+    cout << "Path validation:   " << ((result.verify(startPoint, endPoint, robot, obstacles)) ? "Success!" : "FAILURE")
          << endl;
 
     ofstream outputFile;
