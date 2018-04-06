@@ -107,6 +107,29 @@ void PathPlanner::verticalDecomposition(Arrangement_2 &arr, Kernel &ker) {
 Face_handle PathPlanner::get_face(Arrangement_2& arr, const Landmarks_pl &pl, const Point_2 &p) {
     CGAL::Object obj = pl.locate(p); //find p in pl
 
+    Vertex_const_handle vertex;
+    if (CGAL::assign(vertex, obj)) {
+        Face_iterator it = arr.faces_begin();
+        for(;it!=arr.faces_end();it++)
+        {
+            if(it == arr.unbounded_face())
+                continue;
+
+            ccb_haledge_circulator first = it->outer_ccb();
+            ccb_haledge_circulator circ = first;
+            do {
+                Halfedge_const_handle temp = circ;
+                if(temp->source()->point() == vertex->point())
+                {
+                    if(it->contained())
+                        return arr.non_const_handle(it);
+                    else
+                        break;
+                }
+            } while (++circ != first);
+        }
+        throw "robot on vertex - now supported yet";
+    }
     // Check whether the point lies on an edge separating two forbidden faces.
     Halfedge_const_handle  helfEdge; //check it's a halfedge
     if (CGAL::assign(helfEdge, obj)) {
