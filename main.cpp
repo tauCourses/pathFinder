@@ -430,22 +430,27 @@ bool isForbidden( const list<Segment_2>& ForbiddenEdges,
     const Segment_2& seg = *iSeg;
     const Point_2& s = seg.source();
     const Point_2& t = seg.target();
-    double yu = max(CGAL::to_double(s[1]), CGAL::to_double(t[1]) );
-    double yd = min(CGAL::to_double(s[1]), CGAL::to_double(t[1]) );
+    Kernel::FT seg_up = s[1] > t[1] ? s[1]:t[1];
+    Kernel::FT seg_dw = s[1] < t[1] ? s[1]:t[1];
     if( p1[0] == s[0] )
     {
       // Vertical collision.
-      double p1y = CGAL::to_double( p1[1] );
-      double p2y = CGAL::to_double( p2[1] );
-      bool b1 = yd < p1y && p1y < yu;
-      bool b2 = yd < p2y && p2y < yu; 
+      Kernel::FT pt_up = p1[1] > p2[1] ? p1[1]:p2[1];
+      Kernel::FT pt_dw = p1[1] < p2[1] ? p1[1]:p2[1];
+      if( pt_up == seg_up && pt_dw == seg_dw )
+        return true;
+
+      bool b1 = seg_dw < pt_up && pt_up < seg_up;
+      bool b2 = seg_dw < pt_dw && pt_dw < seg_up; 
       if( b1 || b2 )
       {
+        /*  
         cout << "=== Forbidden case: "<< endl;
         print_point( p1 );
         print_point( p2 );
         print_segment( *iSeg );
         cout << " ==== " << endl;
+        */
         return true;
       }
     }
@@ -510,23 +515,27 @@ void prepareDataInvokeDijkstra( const list<ArrFaceCHandle>& TrpzInPathFace,
   for( ; fi != TrpzInPathFace.end(); ++fi, ++i )
   {
     list<ArrFaceCHandle>::const_iterator si = fi;
+    cout << (i<10? "0":"") << i;
     for( ++si, j = i+1; si != TrpzInPathFace.end(); ++si, ++j )
     {
-      double cx, cy;
-      Point_2 CurrCntr;
+      double cx = -1000., cy = -1000.;
       bool bHaveCommon = twoFacesHaveCommonEdge( *fi, *si, &cx, &cy, 
                                                  ForbiddenEdges );
       pNeigMtrx[i*nMtrxSize + j] = bHaveCommon;
       pNeigMtrx[j*nMtrxSize + i] = bHaveCommon;
-       if( bHaveCommon )
+      cout << " " << bHaveCommon;
+      Point_2 CurrCntr(cx, cy);
+      pNeigCntrs[i*nMtrxSize + j] = CurrCntr;
+      pNeigCntrs[j*nMtrxSize + i] = CurrCntr;
+      /*
+      if( bHaveCommon )
       {
-        Point_2 CurrCntr(cx, cy);
         cout << "Intersection point  ";
         print_point(CurrCntr);
-        pNeigCntrs[i*nMtrxSize + j] = CurrCntr;
-        pNeigCntrs[j*nMtrxSize + i] = CurrCntr;
       }
+      */
     }
+    cout << endl;
   }
   list<int>::const_iterator iStartIdx = StartIdxs.begin();
   vector<int> RecordPath;
