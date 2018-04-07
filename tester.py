@@ -40,8 +40,17 @@ for test in zip(robots, obstacles):
                     print('FAILED %s' % line.split('FAILURE:',1)[1])
                 except:
                     print('FAILED')
+            p = Popen(['python3', 'PreviewPy.py', test[0], test[1], 'output1'], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+            output, err = p.communicate()
+            time.sleep(1)
             break
+        elif 'ERROR:' in line:
+            try:  # sometimes there is a failure reason:
+                print('ERROR: %s' % line.split('ERROR:', 1)[1])
+            except:
+                print('ERROR')
 
-    p = Popen(['python3', 'PreviewPy.py', test[0], test[1], 'output1'], stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    output, err = p.communicate()
-    time.sleep(1)
+            p = Popen(['python3', 'PreviewPy.py', test[0], test[1]], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+            output, err = p.communicate()
+            time.sleep(1)
+            break

@@ -82,13 +82,13 @@ void PathPlanner::verticalDecomposition(Arrangement_2 &arr, Kernel &ker) {
 
     // For each vertex in the arrangment, locate the feature that lies
     // directly below it and the feature that lies directly above it.
-    std::list<Vd_entry>   vd_list;
+    list<Vd_entry>   vd_list;
     CGAL::decompose(arr, back_inserter(vd_list));
 
     // Go over the vertices (given in ascending lexicographical xy-order),
     // and add segements to the feautres below and above it.
     const typename Kernel::Equal_2 equal = ker.equal_2_object();
-    typename std::list<Vd_entry>::iterator  it, prev = vd_list.end();
+    typename list<Vd_entry>::iterator  it, prev = vd_list.end();
     for (it = vd_list.begin(); it != vd_list.end(); ++it) {
         // If the feature above the previous vertex is not the current vertex,
         // add a vertical segment to the feature below the vertex.
@@ -128,16 +128,16 @@ Face_handle PathPlanner::get_face(Arrangement_2& arr, const Landmarks_pl &pl, co
                 }
             } while (++circ != first);
         }
-        throw "robot on vertex - now supported yet";
+        throw "point is not in a legal position - on a vertex between obstacles faces";
     }
-    // Check whether the point lies on an edge separating two forbidden faces.
+
     Halfedge_const_handle  helfEdge; //check it's a halfedge
     if (CGAL::assign(helfEdge, obj)) {
         if (helfEdge->face()->contained())
             return arr.non_const_handle(helfEdge->face());
         else if(helfEdge->twin()->face()->contained())
             return arr.non_const_handle(helfEdge->twin()->face());
-        throw "point is not in legal position - on edge between two obstacles faces";
+        throw "point is not in a legal position - on an edge between two obstacles faces";
     }
 
     // Check whether the point is contained inside a free bounded face.
@@ -147,10 +147,10 @@ Face_handle PathPlanner::get_face(Arrangement_2& arr, const Landmarks_pl &pl, co
         if(face->contained())
             return arr.non_const_handle(face);
     }
-    throw "point is not in legal position";
+    throw "point is not in a legal position - inside an obstacle face";
 }
 
-void PathPlanner::addFaces(Arrangement_2& arr, Face_handle face) {
+void PathPlanner::addFacesToQueue(Arrangement_2 &arr, Face_handle face) {
     ccb_haledge_circulator first = face->outer_ccb();
     ccb_haledge_circulator circ = first;
     do {
@@ -158,27 +158,24 @@ void PathPlanner::addFaces(Arrangement_2& arr, Face_handle face) {
         Face_handle twinFace = arr.non_const_handle(temp->twin()->face());
         if(!twinFace->contained())
             continue;
-        auto search = preds_map.find(twinFace);
-        if(search != preds_map.end()) //if face already exist - we already scan it in BFS no need to do anything
+        auto search = lastFaceMap.find(twinFace);
+        if(search != lastFaceMap.end()) //if face already exist - we already scan it in BFS no need to do anything
             continue;
 
-        preds_map[twinFace] = face;
-        edges_map[twinFace] = arr.non_const_handle(temp);
+        lastFaceMap[twinFace] = face;
+        lastEdgeMap[twinFace] = arr.non_const_handle(temp);
         queue.push_back(twinFace);
     } while (++circ != first);
 }
 
-void PathPlanner::setFacesPath(Arrangement_2& arr)
+void PathPlanner::setFacesPath(Arrangement_2& arr) // run BFS from start_face to end_face
 {
-    typedef CGAL::Arr_face_index_map<Arrangement_2>                 Face_index_map;
-
     Landmarks_pl pl(arr);
-
     start_face = get_face(arr, pl, this->start);
     end_face = get_face(arr, pl, this->end);
 
-    preds_map[start_face] = Face_handle();
-    edges_map[start_face] = Halfedge_handle();
+    lastFaceMap[start_face] = Face_handle();
+    lastEdgeMap[start_face] = Halfedge_handle();
 
     this->queue.push_back(start_face);
     while(!queue.empty())
@@ -188,12 +185,12 @@ void PathPlanner::setFacesPath(Arrangement_2& arr)
         if(face == end_face)
             return;
 
-        this->addFaces(arr, face);
+        this->addFacesToQueue(arr, face);
     }
     throw "no path found!";
 }
 
-vector<Point_2> PathPlanner::reversedPath(Arrangement_2& arr, Kernel& ker){
+vector<Point_2> PathPlanner::reversedPath(Arrangement_2& arr, Kernel& ker){ //create path from BFS results
     vector<Point_2> path;
     Kernel::Construct_midpoint_2  midp = ker.construct_midpoint_2_object();
     path.push_back(this->end);
@@ -201,53 +198,19 @@ vector<Point_2> PathPlanner::reversedPath(Arrangement_2& arr, Kernel& ker){
     Face_handle f = this->end_face;
     do {
         path.push_back(point_in_vertical_trapezoid(f, arr, ker));
-        Halfedge_handle he = edges_map[f];
+        Halfedge_handle he = lastEdgeMap[f];
         if (he != Halfedge_handle())
             path.push_back(midp(he->source()->point(), he->target()->point()));
-        f = this->preds_map[f];
+        f = this->lastFaceMap[f];
     } while (f != Face_handle());
     path.push_back(this->start);
 
     return path;
 }
 
-void PathPlanner::printFace(Face_handle face)
-{
-    ccb_haledge_circulator first = face->outer_ccb();
-    ccb_haledge_circulator circ = first;
-    do {
-        Halfedge_const_handle temp = circ;
-        cout << temp->source()->point() << " ";
-    } while (++circ != first);
-    cout << endl;
-}
-
-void PathPlanner::printArr(Arrangement_2& arr)
-{
-    cout << "number of faces - " << arr.number_of_faces() << endl;
-    Face_iterator it = arr.faces_begin();
-    for(;it!=arr.faces_end();it++)
-    {
-        if(it != arr.unbounded_face()) {
-            ccb_haledge_circulator first = it->outer_ccb();
-            ccb_haledge_circulator circ = first;
-            do {
-                Halfedge_const_handle temp = circ;
-                cout << temp->source()->point() << " ";
-            } while (++circ != first);
-            cout << endl;
-        } else
-            cout << "unboanded!\n";
-        if(it->contained())
-            cout << "contained!" <<endl;
-        else
-            cout << "not contained!" <<endl;
-    }
-}
-
 vector<Point_2> PathPlanner::planPath() {
     Arrangement_2 arr = this->freeSpace.arrangement(); //set the free space as arrangment
-    this->addFrame(arr);
+    this->addFrame(arr); //add frame around the arrangement
 
     Polygon_set_2::Traits_2 traits;
     polygon_split_observer observer; //ensure that when face split two side safe their property(inside/outside)
@@ -298,38 +261,34 @@ Point_2 PathPlanner::point_in_vertical_trapezoid(Face_const_handle f, const Arra
 }
 
 void PathPlanner::addFrame(Arrangement_2 &arr) {
-    FT mostLeft = this->start[0] < this->end[0] ? this->start[0] : this->end[0];
-    FT mostRight = this->start[0] < this->end[0] ? this->end[0] : this->start[0];
-    FT mostUp = this->start[1] < this->end[1] ? this->end[1] : this->start[1];
-    FT mostDown = this->start[1] < this->end[1] ? this->start[1] : this->end[1];
+    FT mostLeft = this->start.x() < this->end.x() ? this->start.x() : this->end.x();
+    FT mostRight = this->start.x() < this->end.x() ? this->end.x() : this->start.x();
+    FT mostUp = this->start.y() < this->end.y() ? this->end.y() : this->start.y();
+    FT mostDown = this->start.y() < this->end.y() ? this->start.y() : this->end.y();
 
-    Arr_VrtxCIter vit;
-    for (vit = arr.vertices_begin(); vit != arr.vertices_end(); ++vit)
+    for (Arr_VrtxCIter vit = arr.vertices_begin(); vit != arr.vertices_end(); ++vit)
     {
         if(vit->point()[0] < mostLeft)
-            mostLeft = vit->point()[0];
+            mostLeft = vit->point().x();
         if(vit->point()[0] > mostRight)
-            mostRight = vit->point()[0];
+            mostRight = vit->point().x();
         if(vit->point()[1] < mostDown)
-            mostDown = vit->point()[1];
+            mostDown = vit->point().y();
         if(vit->point()[1] > mostUp)
-            mostUp = vit->point()[1];
+            mostUp = vit->point().y();
     }
-    Point_2 upperLeft = {mostLeft - 1, mostUp + 1};
-    Point_2 upperRight = {mostRight +1 , mostUp + 1};
-    Point_2 lowerRight = {mostRight + 2, mostDown -1};
-    Point_2 lowerLeft = {mostLeft - 2, mostDown -1};
+    Point_2     upperLeft(mostLeft - 1, mostUp + 1),
+                upperRight(mostRight +1 , mostUp + 1),
+                lowerRight(mostRight + 2, mostDown -1),
+                lowerLeft(mostLeft - 2, mostDown -1);
 
-
-
-    Segment_2 upperBound(upperLeft, upperRight),
-            rightBound(upperRight, lowerRight),
-            lowerBound(lowerRight, lowerLeft),
-            leftBound(lowerLeft, upperLeft);
+    Segment_2   upperBound(upperLeft, upperRight),
+                rightBound(upperRight, lowerRight),
+                lowerBound(lowerRight, lowerLeft),
+                leftBound(lowerLeft, upperLeft);
 
     Halfedge_handle tempEdge = arr.insert_in_face_interior(upperBound, arr.unbounded_face());
     Vertex_handle startVertex = tempEdge->source();
-    Vertex_handle endVertex = tempEdge->target();
     tempEdge = arr.insert_from_left_vertex(rightBound, tempEdge->target());
     tempEdge = arr.insert_from_right_vertex(lowerBound, tempEdge->target());
     tempEdge = arr.insert_at_vertices(leftBound, tempEdge->target(), startVertex);

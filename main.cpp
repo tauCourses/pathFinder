@@ -42,15 +42,8 @@ vector<Point_2> findPath(const Point_2 &start,
                          const Point_2 &end,
                          const Polygon_2 &robot,
                          vector<Polygon_2> &obstacles) {
-    try {
-        PathPlanner planner(start, end, robot, obstacles);
-        return planner.planPath();
-    }
-    catch (const char* c)
-    {
-        cout << "hi I been here! " << c << endl;
-        return vector<Point_2>();
-    }
+    PathPlanner planner(start, end, robot, obstacles);
+    return planner.planPath();
 }
 
 int main(int argc, char *argv[]) {
@@ -79,20 +72,28 @@ int main(int argc, char *argv[]) {
 
     auto obstacles = loadPolygons(inputObstaclesFile);
     inputObstaclesFile.close();
-    boost::timer timer;
-    auto result = Path(findPath(startPoint, endPoint, robot, obstacles));
-    auto secs = timer.elapsed();
-    cout << "Path created:      " << secs << " secs" << endl;
-    cout << "Path validation:   " << ((result.verify(startPoint, endPoint, robot, obstacles)) ? "Success!" : "FAILURE")
-         << endl;
 
-    ofstream outputFile;
-    outputFile.open(argv[3]);
-    if (!outputFile.is_open()) {
-        cerr << "ERROR: Couldn't open file: " << argv[3] << endl;
-        return -1;
+    try {
+        boost::timer timer;
+        auto result = Path(findPath(startPoint, endPoint, robot, obstacles));
+        auto secs = timer.elapsed();
+        cout << "Path created:      " << secs << " secs" << endl;
+        cout << "Path validation:   " << ((result.verify(startPoint, endPoint, robot, obstacles)) ? "Success!" : "FAILURE")
+             << endl;
+
+        ofstream outputFile;
+        outputFile.open(argv[3]);
+        if (!outputFile.is_open()) {
+            cerr << "ERROR: Couldn't open file: " << argv[3] << endl;
+            return -1;
+        }
+        outputFile << result << endl;
+        outputFile.close();
     }
-    outputFile << result << endl;
-    outputFile.close();
+    catch (const char* c)
+    {
+        cout << "ERROR: " << c << endl;
+        return 0;
+    }
     return 0;
 }

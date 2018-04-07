@@ -7,27 +7,11 @@
 
 #include "CGAL_defines.h"
 
-/*#include <boost/property_map/property_map.hpp>
-#include <boost/graph/breadth_first_search.hpp>
-#include <boost/graph/visitors.hpp>
-#include <boost/graph/filtered_graph.hpp>*/
-
-
 using namespace std;
-
-class Less_than_handle {
-public:
-    template <typename Type>
-    bool operator()(Type s1, Type s2) const { return (&(*s1) < &(*s2)); }
-};
-
-typedef map<Face_handle, Face_handle, Less_than_handle>     Preds_map;
-typedef map<Face_handle, Halfedge_handle, Less_than_handle> Edges_map;
-
 
 class polygon_split_observer : public CGAL::Arr_observer<Arrangement_2>
 {
-    void after_split_face(Face_handle f1, Face_handle f2, bool);
+    void after_split_face(Face_handle f1, Face_handle f2, bool) override;
 };
 
 class PathPlanner {
@@ -47,35 +31,26 @@ private:
 
     //bfs maps:
     list<Face_handle> queue;
-    Preds_map preds_map;
-    Edges_map edges_map;
+    map<Face_handle, Face_handle> lastFaceMap;
+    map<Face_handle, Halfedge_handle> lastEdgeMap;
 
     void setInversedRobot();
     void setFreeSpace();
+    void addFrame(Arrangement_2 &arr);
 
     void verticalDecomposition(Arrangement_2 &arr, Kernel &ker);
     void addVerticalSegment(Arrangement_2 &arr, Vertex_handle v, CGAL::Object obj, Kernel &ker);
 
     Face_handle get_face(Arrangement_2& arr, const Landmarks_pl &pl, const Point_2 &p);
     void setFacesPath(Arrangement_2& arr);
+    void addFacesToQueue(Arrangement_2 &arr, Face_handle face);
 
     Point_2 point_in_vertical_trapezoid(Face_const_handle f, const Arrangement_2& arr, const Kernel& ker);
     vector<Point_2> reversedPath(Arrangement_2& arr, Kernel& ker);
 
-    void printFace(Face_handle face);
-
-    void addFaces(Arrangement_2& arr, Face_handle face);
-
 public:
     PathPlanner(const Point_2 start, const Point_2 end, const Polygon_2 &robot, vector<Polygon_2> &obstacles);
-
     vector<Point_2> planPath();
-
-    void addFrame(Arrangement_2 &arr);
-
-    void printArr(Arrangement_2 &arr);
-
-
 };
 
 
