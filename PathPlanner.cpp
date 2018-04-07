@@ -1,5 +1,9 @@
 #include "PathPlanner.h"
 
+
+FaceNode::FaceNode(FT distance, Face_handle face, Face_handle prevFace, Halfedge_handle prevEdge) :
+        distance(distance), face(face), prevFace(prevFace), prevEdge(prevEdge) {}
+
 void polygon_split_observer::after_split_face(Face_handle f1, Face_handle f2, bool)
 {
     f2->set_contained(f1->contained());
@@ -150,23 +154,108 @@ Face_handle PathPlanner::get_face(Arrangement_2& arr, const Landmarks_pl &pl, co
     throw "point is not in a legal position - inside an obstacle face";
 }
 
-void PathPlanner::addFacesToQueue(Arrangement_2 &arr, Face_handle face) {
+Point_2 PathPlanner::midPoint(Point_2 a, Point_2 b)
+{
+    return {(a.x() + b.x()) /2, (a.y()+b.y())/2 };
+}
+
+FT PathPlanner::edgeDistance(Halfedge_handle a, Halfedge_handle b)
+{
+    FT distance;
+    Point_2 a_point, b_point = midPoint(b->source()->point(), b->target()->point());
+    if(a == Halfedge_handle()) {
+        a_point = Point_2(this->start);
+    }
+    else {
+        a_point = midPoint(a->source()->point(), a->target()->point());
+    }
+    cout << "from " << a_point << " to " << b_point << " ";
+    distance = (a_point.x() - b_point.x()) * (a_point.x() - b_point.x()) +
+               (a_point.y() - b_point.y()) * (a_point.y() - b_point.y());
+
+    distance = sqrt(CGAL::to_double(distance));
+    cout << "disssss: " << distance << endl;
+    return distance;
+}
+
+void PathPlanner::printFace(Face_handle face)
+{
     ccb_haledge_circulator first = face->outer_ccb();
     ccb_haledge_circulator circ = first;
     do {
         Halfedge_const_handle temp = circ;
-        Face_handle twinFace = arr.non_const_handle(temp->twin()->face());
-        if(!twinFace->contained())
-            continue;
-        auto search = lastFaceMap.find(twinFace);
-        if(search != lastFaceMap.end()) //if face already exist - we already scan it in BFS no need to do anything
-            continue;
-
-        lastFaceMap[twinFace] = face;
-        lastEdgeMap[twinFace] = arr.non_const_handle(temp);
-        queue.push_back(twinFace);
+        cout << temp->source()->point() << " ";
     } while (++circ != first);
+    cout << endl;
 }
+
+void PathPlanner::printArr(Arrangement_2& arr)
+{
+    cout << "number of faces - " << arr.number_of_faces() << endl;
+    Face_iterator it = arr.faces_begin();
+    for(;it!=arr.faces_end();it++)
+    {
+        if(it != arr.unbounded_face()) {
+            ccb_haledge_circulator first = it->outer_ccb();
+            ccb_haledge_circulator circ = first;
+            do {
+                Halfedge_const_handle temp = circ;
+                cout << temp->source()->point() << " ";
+            } while (++circ != first);
+            cout << endl;
+        } else
+            cout << "unboanded!\n";
+        if(it->contained())
+            cout << "contained!" <<endl;
+        else
+            cout << "not contained!" <<endl;
+    }
+}
+
+void PathPlanner::addFacesToQueue(Arrangement_2 &arr, FaceNode* faceNode) {
+    ccb_haledge_circulator first = faceNode->face->outer_ccb();
+    ccb_haledge_circulator circ = first;
+    do {
+        cout << "\tstart handle ";
+        Halfedge_handle tempEdge = arr.non_const_handle(circ);
+        Face_handle twinFace = arr.non_const_handle(tempEdge->twin()->face());
+        cout << "twinFace: ";
+        //printFace(twinFace);
+        if(!twinFace->contained()) {
+            cout << "not contained!\n";
+            continue;
+        }auto search = facesMap.find(twinFace);
+        if(search != facesMap.end()) //if face already exist try to improve
+        {
+            FaceNode* temp = &(facesMap[twinFace]);
+            cout << "found in facesMap\n";
+            if(temp->processed) {
+                cout << "already procced\n";
+                continue;
+            }
+            FT tempDistance = faceNode->distance + edgeDistance(faceNode->prevEdge, tempEdge);
+            if(tempDistance < temp->distance)
+            {
+                temp->distance = tempDistance;
+                temp->prevFace = faceNode->face;
+                temp->prevEdge = tempEdge;
+                queue.erase(temp); //remove from set beacuse it's in wrong position
+                queue.insert(&(facesMap[twinFace])); //insert in the right position
+            }
+        } else {
+            cout << "new for the graph\n";
+            FT tempDistance = faceNode->distance + edgeDistance(faceNode->prevEdge, tempEdge);
+            //cout << "distance: " << tempDistance <<endl;
+            facesMap[twinFace] = FaceNode(tempDistance, Face_handle(twinFace), Face_handle(faceNode->face), Halfedge_handle(tempEdge));
+            //cout << "hereh?!\n";
+            this->queue.insert(&(facesMap[twinFace]));
+        }
+        cout << "end face handle!\n";
+    } while (++circ != first);
+    //cout << "end faces handle!\n";
+}
+
+
 
 void PathPlanner::setFacesPath(Arrangement_2& arr) // run BFS from start_face to end_face
 {
@@ -174,18 +263,20 @@ void PathPlanner::setFacesPath(Arrangement_2& arr) // run BFS from start_face to
     start_face = get_face(arr, pl, this->start);
     end_face = get_face(arr, pl, this->end);
 
-    lastFaceMap[start_face] = Face_handle();
-    lastEdgeMap[start_face] = Halfedge_handle();
-
-    this->queue.push_back(start_face);
+    facesMap[start_face] = FaceNode(0,start_face, Face_handle(),  Halfedge_handle());
+    this->queue.insert(&(facesMap[start_face]));
     while(!queue.empty())
     {
-        Face_handle face = queue.front();
-        queue.pop_front();
-        if(face == end_face)
+        cout << "queue size - " << queue.size() << endl;
+        FaceNode* faceNode = *(queue.begin());
+        cout<<"handle face ";
+        printFace(faceNode->face);
+        cout << "distance: " << faceNode->distance <<endl;
+        if(faceNode->face == end_face)
             return;
-
-        this->addFacesToQueue(arr, face);
+        faceNode->processed = true;
+        this->addFacesToQueue(arr, faceNode);
+        queue.erase(faceNode);
     }
     throw "no path found!";
 }
@@ -197,10 +288,11 @@ vector<Point_2> PathPlanner::reversedPath(Arrangement_2& arr, Kernel& ker){ //cr
 
     Face_handle f = this->end_face;
     do {
-        Halfedge_handle he = lastEdgeMap[f];
+        FaceNode* temp = &(facesMap[f]);
+        Halfedge_handle he = temp->prevEdge;
         if (he != Halfedge_handle())
             path.push_back(midp(he->source()->point(), he->target()->point()));
-        f = this->lastFaceMap[f];
+        f = temp->prevFace;
     } while (f != Face_handle());
     path.push_back(this->start);
 
@@ -234,13 +326,13 @@ void PathPlanner::addFrame(Arrangement_2 &arr) {
 
     for (Arr_VrtxCIter vit = arr.vertices_begin(); vit != arr.vertices_end(); ++vit)
     {
-        if(vit->point()[0] < mostLeft)
+        if(vit->point().x() < mostLeft)
             mostLeft = vit->point().x();
-        if(vit->point()[0] > mostRight)
+        if(vit->point().x() > mostRight)
             mostRight = vit->point().x();
-        if(vit->point()[1] < mostDown)
+        if(vit->point().y() < mostDown)
             mostDown = vit->point().y();
-        if(vit->point()[1] > mostUp)
+        if(vit->point().y() > mostUp)
             mostUp = vit->point().y();
     }
     Point_2     upperLeft(mostLeft - 1, mostUp + 1),
