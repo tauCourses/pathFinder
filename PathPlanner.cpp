@@ -4,6 +4,19 @@
 FaceNode::FaceNode(FT distance, Face_handle face, Face_handle prevFace, Halfedge_handle prevEdge) :
         distance(distance), face(face), prevFace(prevFace), prevEdge(prevEdge) {}
 
+bool CmpfaceNodePtrs::operator()(const FaceNode *lhs, const FaceNode *rhs) const {
+    if(lhs->distance != rhs->distance)
+        return lhs->distance < rhs->distance;
+
+    if(lhs->prevEdge == Halfedge_handle())
+        return rhs->prevEdge != Halfedge_handle();
+    else if(rhs->prevEdge == Halfedge_handle())
+        return lhs->prevEdge != Halfedge_handle();
+    if (lhs->prevEdge->source()->point() != rhs->prevEdge->source()->point())
+        return lhs->prevEdge->source()->point() < rhs->prevEdge->source()->point();
+    return lhs->prevEdge->target()->point() < rhs->prevEdge->target()->point();
+}
+
 void polygon_split_observer::after_split_face(Face_handle f1, Face_handle f2, bool)
 {
     f2->set_contained(f1->contained());
@@ -163,99 +176,49 @@ FT PathPlanner::edgeDistance(Halfedge_handle a, Halfedge_handle b)
 {
     FT distance;
     Point_2 a_point, b_point = midPoint(b->source()->point(), b->target()->point());
-    if(a == Halfedge_handle()) {
+    if(a == Halfedge_handle())
         a_point = Point_2(this->start);
-    }
-    else {
+    else
         a_point = midPoint(a->source()->point(), a->target()->point());
-    }
-    cout << "from " << a_point << " to " << b_point << " ";
+
     distance = (a_point.x() - b_point.x()) * (a_point.x() - b_point.x()) +
                (a_point.y() - b_point.y()) * (a_point.y() - b_point.y());
 
-    distance = sqrt(CGAL::to_double(distance));
-    cout << "disssss: " << distance << endl;
-    return distance;
-}
-
-void PathPlanner::printFace(Face_handle face)
-{
-    ccb_haledge_circulator first = face->outer_ccb();
-    ccb_haledge_circulator circ = first;
-    do {
-        Halfedge_const_handle temp = circ;
-        cout << temp->source()->point() << " ";
-    } while (++circ != first);
-    cout << endl;
-}
-
-void PathPlanner::printArr(Arrangement_2& arr)
-{
-    cout << "number of faces - " << arr.number_of_faces() << endl;
-    Face_iterator it = arr.faces_begin();
-    for(;it!=arr.faces_end();it++)
-    {
-        if(it != arr.unbounded_face()) {
-            ccb_haledge_circulator first = it->outer_ccb();
-            ccb_haledge_circulator circ = first;
-            do {
-                Halfedge_const_handle temp = circ;
-                cout << temp->source()->point() << " ";
-            } while (++circ != first);
-            cout << endl;
-        } else
-            cout << "unboanded!\n";
-        if(it->contained())
-            cout << "contained!" <<endl;
-        else
-            cout << "not contained!" <<endl;
-    }
+    return sqrt(CGAL::to_double(distance));;
 }
 
 void PathPlanner::addFacesToQueue(Arrangement_2 &arr, FaceNode* faceNode) {
     ccb_haledge_circulator first = faceNode->face->outer_ccb();
     ccb_haledge_circulator circ = first;
     do {
-        cout << "\tstart handle ";
         Halfedge_handle tempEdge = arr.non_const_handle(circ);
         Face_handle twinFace = arr.non_const_handle(tempEdge->twin()->face());
-        cout << "twinFace: ";
-        //printFace(twinFace);
-        if(!twinFace->contained()) {
-            cout << "not contained!\n";
+
+        if(!twinFace->contained())
             continue;
-        }auto search = facesMap.find(twinFace);
+        auto search = facesMap.find(twinFace);
         if(search != facesMap.end()) //if face already exist try to improve
         {
             FaceNode* temp = &(facesMap[twinFace]);
-            cout << "found in facesMap\n";
-            if(temp->processed) {
-                cout << "already procced\n";
+            if(temp->processed)
                 continue;
-            }
             FT tempDistance = faceNode->distance + edgeDistance(faceNode->prevEdge, tempEdge);
             if(tempDistance < temp->distance)
             {
+                queue.erase(temp); //remove from set beacuse it's in wrong position
+                temp = &(facesMap[twinFace]);
                 temp->distance = tempDistance;
                 temp->prevFace = faceNode->face;
                 temp->prevEdge = tempEdge;
-                queue.erase(temp); //remove from set beacuse it's in wrong position
-                queue.insert(&(facesMap[twinFace])); //insert in the right position
+                queue.insert(temp); //insert in the right position
             }
         } else {
-            cout << "new for the graph\n";
             FT tempDistance = faceNode->distance + edgeDistance(faceNode->prevEdge, tempEdge);
-            //cout << "distance: " << tempDistance <<endl;
             facesMap[twinFace] = FaceNode(tempDistance, Face_handle(twinFace), Face_handle(faceNode->face), Halfedge_handle(tempEdge));
-            //cout << "hereh?!\n";
             this->queue.insert(&(facesMap[twinFace]));
         }
-        cout << "end face handle!\n";
     } while (++circ != first);
-    //cout << "end faces handle!\n";
 }
-
-
 
 void PathPlanner::setFacesPath(Arrangement_2& arr) // run BFS from start_face to end_face
 {
@@ -267,11 +230,7 @@ void PathPlanner::setFacesPath(Arrangement_2& arr) // run BFS from start_face to
     this->queue.insert(&(facesMap[start_face]));
     while(!queue.empty())
     {
-        cout << "queue size - " << queue.size() << endl;
         FaceNode* faceNode = *(queue.begin());
-        cout<<"handle face ";
-        printFace(faceNode->face);
-        cout << "distance: " << faceNode->distance <<endl;
         if(faceNode->face == end_face)
             return;
         faceNode->processed = true;

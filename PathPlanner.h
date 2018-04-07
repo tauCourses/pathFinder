@@ -26,10 +26,7 @@ public:
 
 struct CmpfaceNodePtrs
 {
-    bool operator()(const FaceNode* lhs, const FaceNode* rhs) const
-    {
-        return lhs->distance < rhs->distance;
-    }
+    bool operator()(const FaceNode* lhs, const FaceNode* rhs) const;
 };
 
 class polygon_split_observer : public CGAL::Arr_observer<Arrangement_2>
@@ -71,14 +68,10 @@ private:
 
     vector<Point_2> reversedPath(Arrangement_2& arr, Kernel& ker);
 
-    void printFace(Face_handle face);
-    void printArr(Arrangement_2 &arr);
-
 public:
     PathPlanner(const Point_2 start, const Point_2 end, const Polygon_2 &robot, vector<Polygon_2> &obstacles);
     vector<Point_2> planPath();
 
 };
-
 
 #endif //PATHFINDER_PATHPLANNER_H
