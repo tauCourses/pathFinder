@@ -197,7 +197,6 @@ vector<Point_2> PathPlanner::reversedPath(Arrangement_2& arr, Kernel& ker){ //cr
 
     Face_handle f = this->end_face;
     do {
-        path.push_back(point_in_vertical_trapezoid(f, arr, ker));
         Halfedge_handle he = lastEdgeMap[f];
         if (he != Halfedge_handle())
             path.push_back(midp(he->source()->point(), he->target()->point()));
@@ -225,39 +224,6 @@ vector<Point_2> PathPlanner::planPath() {
         path.push_back(Point_2(reversedPath[i]));
 
     return path;
-}
-
-Point_2 PathPlanner::point_in_vertical_trapezoid(Face_const_handle f, const Arrangement_2& arr, const Kernel& ker)
-{
-    const typename Arrangement_2::Traits_2::Is_vertical_2 is_vertical =
-            arr.traits()->is_vertical_2_object();
-    const typename Kernel::Construct_midpoint_2 midpoint =
-            ker.construct_midpoint_2_object();
-
-    Halfedge_const_handle he1, he2;
-    CGAL::Arr_halfedge_direction direction;
-    bool found = false;
-    ccb_haledge_circulator first = f->outer_ccb();
-    ccb_haledge_circulator circ = first;
-    do {
-        if (!is_vertical(circ->curve())) {
-            // The current edge is not vertical: assign it as either he1 or he2.
-            if (!found) {
-                he1 = circ;
-                direction = he1->direction();
-                found = true;
-                continue;
-            }
-            if (circ->direction() != direction) {
-                he2 = circ;
-                break;
-            }
-        }
-    } while (++circ != first);
-
-    // Take the midpoint of the midpoints of he1 and he2.
-    return midpoint(midpoint(he1->source()->point(), he1->target()->point()),
-                    midpoint(he2->source()->point(), he2->target()->point()));
 }
 
 void PathPlanner::addFrame(Arrangement_2 &arr) {

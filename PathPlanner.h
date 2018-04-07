@@ -45,7 +45,6 @@ private:
     void setFacesPath(Arrangement_2& arr);
     void addFacesToQueue(Arrangement_2 &arr, Face_handle face);
 
-    Point_2 point_in_vertical_trapezoid(Face_const_handle f, const Arrangement_2& arr, const Kernel& ker);
     vector<Point_2> reversedPath(Arrangement_2& arr, Kernel& ker);
 
 public:
