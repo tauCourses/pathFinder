@@ -1,20 +1,16 @@
 #include "PathPlanner.h"
 
+const int PathPlanner::EDGE_DIVIDING_PARAM = 5;
 
-FaceNode::FaceNode(FT distance, Face_handle face, Face_handle prevFace, Halfedge_handle prevEdge) :
-        distance(distance), face(face), prevFace(prevFace), prevEdge(prevEdge) {}
+PointNode::PointNode(FT distance, Point_2 point, PointNode* prev, Halfedge_handle edge) :
+        distance(distance), point(point), prev(prev), edge(edge) {}
 
-bool CmpfaceNodePtrs::operator()(const FaceNode *lhs, const FaceNode *rhs) const {
+bool CmpfaceNodePtrs::operator()(const PointNode *lhs, const PointNode *rhs) const {
+
     if(lhs->distance != rhs->distance)
         return lhs->distance < rhs->distance;
 
-    if(lhs->prevEdge == Halfedge_handle())
-        return rhs->prevEdge != Halfedge_handle();
-    else if(rhs->prevEdge == Halfedge_handle())
-        return lhs->prevEdge != Halfedge_handle();
-    if (lhs->prevEdge->source()->point() != rhs->prevEdge->source()->point())
-        return lhs->prevEdge->source()->point() < rhs->prevEdge->source()->point();
-    return lhs->prevEdge->target()->point() < rhs->prevEdge->target()->point();
+    return lhs->point < rhs->point;
 }
 
 void polygon_split_observer::after_split_face(Face_handle f1, Face_handle f2, bool)
@@ -23,7 +19,7 @@ void polygon_split_observer::after_split_face(Face_handle f1, Face_handle f2, bo
 }
 
 PathPlanner::PathPlanner(const Point_2 start, const Point_2 end, const Polygon_2 &robot, vector<Polygon_2> &obstacles) :
-        start(start), end(end), robot(robot), obstacles(obstacles){
+        startPoint(start), endPoint(end), robot(robot), obstacles(obstacles){
     this->setInversedRobot();
     this->setFreeSpace();
 }
@@ -172,89 +168,203 @@ Point_2 PathPlanner::midPoint(Point_2 a, Point_2 b)
     return {(a.x() + b.x()) /2, (a.y()+b.y())/2 };
 }
 
-FT PathPlanner::edgeDistance(Halfedge_handle a, Halfedge_handle b)
+FT PathPlanner::pointsDistance(Point_2 a_point, Point_2 b_point)
 {
-    FT distance;
-    Point_2 a_point, b_point = midPoint(b->source()->point(), b->target()->point());
-    if(a == Halfedge_handle())
-        a_point = Point_2(this->start);
-    else
-        a_point = midPoint(a->source()->point(), a->target()->point());
-
-    distance = (a_point.x() - b_point.x()) * (a_point.x() - b_point.x()) +
+    FT distance = (a_point.x() - b_point.x()) * (a_point.x() - b_point.x()) +
                (a_point.y() - b_point.y()) * (a_point.y() - b_point.y());
 
     return sqrt(CGAL::to_double(distance));;
 }
 
-void PathPlanner::addFacesToQueue(Arrangement_2 &arr, FaceNode* faceNode) {
-    ccb_haledge_circulator first = faceNode->face->outer_ccb();
+vector<Point_2> PathPlanner::getEdgePoints(Halfedge_handle edge) {
+    auto search = edgesMap.find(edge);
+    if(search != edgesMap.end()) //if edge in database take from it
+        return edgesMap[edge];
+
+    Point_2 source = edge->source()->point();
+    Point_2 target = edge->target()->point();
+    FT distance = pointsDistance(source, target);
+    FT xDistance = target.x() - source.x();
+    FT yDistance = target.y() - source.y();
+    vector<Point_2> points;
+    for(int i=0; i<=PathPlanner::EDGE_DIVIDING_PARAM; i++)
+        points.push_back({source.x() + i*xDistance/PathPlanner::EDGE_DIVIDING_PARAM,
+                          source.y() + i*yDistance/PathPlanner::EDGE_DIVIDING_PARAM });
+
+    edgesMap[edge] = points;
+
+    return points;
+}
+
+
+void PathPlanner::addPointToQueue(PointNode* pointNode, Point_2 tempPoint, Halfedge_handle tempEdge)
+{
+    if(tempPoint == pointNode->point)
+        return;
+    auto search = pointsMap.find(tempPoint);
+    if(search != pointsMap.end()) //if face already exist try to improve
+        tryToImprove(pointNode, tempPoint);
+    else {
+        FT tempDistance = pointNode->distance + pointsDistance(pointNode->point, tempPoint);
+        pointsMap[tempPoint] = PointNode(tempDistance, tempPoint, pointNode, tempEdge);
+        this->queue.insert(&(pointsMap[tempPoint]));
+    }
+}
+
+void PathPlanner::addFaceToQueue(Arrangement_2 &arr, PointNode* pointNode, Face_handle face)
+{
+    ccb_haledge_circulator first = face->outer_ccb();
     ccb_haledge_circulator circ = first;
     do {
         Halfedge_handle tempEdge = arr.non_const_handle(circ);
-        Face_handle twinFace = arr.non_const_handle(tempEdge->twin()->face());
-
-        if(!twinFace->contained())
+        if(!tempEdge->twin()->face()->contained())
             continue;
-        auto search = facesMap.find(twinFace);
-        if(search != facesMap.end()) //if face already exist try to improve
-        {
-            FaceNode* temp = &(facesMap[twinFace]);
-            if(temp->processed)
-                continue;
-            FT tempDistance = faceNode->distance + edgeDistance(faceNode->prevEdge, tempEdge);
-            if(tempDistance < temp->distance)
-            {
-                queue.erase(temp); //remove from set beacuse it's in wrong position
-                temp = &(facesMap[twinFace]);
-                temp->distance = tempDistance;
-                temp->prevFace = faceNode->face;
-                temp->prevEdge = tempEdge;
-                queue.insert(temp); //insert in the right position
-            }
-        } else {
-            FT tempDistance = faceNode->distance + edgeDistance(faceNode->prevEdge, tempEdge);
-            facesMap[twinFace] = FaceNode(tempDistance, Face_handle(twinFace), Face_handle(faceNode->face), Halfedge_handle(tempEdge));
-            this->queue.insert(&(facesMap[twinFace]));
+        for(Point_2 point: getEdgePoints(tempEdge))
+            addPointToQueue(pointNode, point, tempEdge);
+
+    } while (++circ != first);
+}
+
+void PathPlanner::tryToImprove(PointNode* pointNode, Point_2 tempPoint)
+{
+    PointNode* temp = &(pointsMap[tempPoint]);
+    if(temp->processed)
+        return;
+    FT tempDistance = pointNode->distance + pointsDistance(pointNode->point, tempPoint);
+    if(tempDistance < temp->distance)
+    {
+        queue.erase(temp); //remove from set beacuse it's in wrong position
+        temp = &(pointsMap[tempPoint]);
+        temp->distance = tempDistance;
+        temp->prev = pointNode;
+        queue.insert(temp); //insert in the right position
+    }
+}
+
+void PathPlanner::addFacesToQueue(Arrangement_2 &arr, PointNode* pointNode) {
+    Face_handle firstFace = pointNode->edge->face();
+    Face_handle secondFace = pointNode->edge->twin()->face();
+    if(firstFace == end_face || secondFace == end_face)
+    {
+        auto search = pointsMap.find(this->endPoint);
+        if(search != pointsMap.end())
+            tryToImprove(pointNode, this->endPoint);
+        else{
+            FT tempDistance = pointNode->distance + pointsDistance(pointNode->point, this->endPoint);
+            pointsMap[this->endPoint] = PointNode(tempDistance, this->endPoint, pointNode, Halfedge_handle());
+            this->queue.insert(&(pointsMap[this->endPoint]));
         }
+        return;
+    }
+    addFaceToQueue(arr, pointNode, firstFace);
+    addFaceToQueue(arr, pointNode, secondFace);
+}
+
+void PathPlanner::addStartPathToQueue(Arrangement_2& arr)
+{
+    pointsMap[startPoint] = PointNode(0,startPoint, nullptr, Halfedge_handle());
+    PointNode* pointNode = &(pointsMap[startPoint]);
+    if(start_face == end_face)
+    {
+        pointsMap[this->endPoint] = PointNode(0, this->endPoint, pointNode, Halfedge_handle());
+        this->queue.insert(&(pointsMap[this->endPoint]));
+        return;
+    }
+
+    ccb_haledge_circulator first = start_face->outer_ccb();
+    ccb_haledge_circulator circ = first;
+    do {
+        Halfedge_handle tempEdge = arr.non_const_handle(circ);
+        for(Point_2 point: getEdgePoints(tempEdge))
+        {
+            if(point == pointNode->point && tempEdge->twin()->face()->contained())
+            {
+                pointNode->edge = tempEdge;
+                this->queue.insert(&(pointsMap[startPoint]));
+                return;
+            }
+        }
+    } while (++circ != first);
+
+    do {
+        Halfedge_handle tempEdge = arr.non_const_handle(circ);
+        if(!tempEdge->twin()->face()->contained())
+            continue;
+        for(Point_2 point: getEdgePoints(tempEdge))
+            addPointToQueue(pointNode, point, tempEdge);
     } while (++circ != first);
 }
 
 void PathPlanner::setFacesPath(Arrangement_2& arr) // run BFS from start_face to end_face
 {
     Landmarks_pl pl(arr);
-    start_face = get_face(arr, pl, this->start);
-    end_face = get_face(arr, pl, this->end);
+    start_face = get_face(arr, pl, this->startPoint);
+    end_face = get_face(arr, pl, this->endPoint);
 
-    facesMap[start_face] = FaceNode(0,start_face, Face_handle(),  Halfedge_handle());
-    this->queue.insert(&(facesMap[start_face]));
+    addStartPathToQueue(arr);
     while(!queue.empty())
     {
-        FaceNode* faceNode = *(queue.begin());
-        if(faceNode->face == end_face)
+        PointNode* pointNode = *(queue.begin());
+        if(pointNode->point == endPoint)
             return;
-        faceNode->processed = true;
-        this->addFacesToQueue(arr, faceNode);
-        queue.erase(faceNode);
+        pointNode->processed = true;
+        this->addFacesToQueue(arr, pointNode);
+        queue.erase(pointNode);
     }
     throw "no path found!";
 }
 
-vector<Point_2> PathPlanner::reversedPath(Arrangement_2& arr, Kernel& ker){ //create path from BFS results
+Segment_2 PathPlanner::getSegment(Halfedge_handle edge)
+{
+    return getSegment(edge->source()->point(), edge->target()->point());
+}
+
+Segment_2 PathPlanner::getSegment(Point_2 a, Point_2 b)
+{
+    return {a,b};
+}
+
+vector<Point_2> PathPlanner::reversedPath(Arrangement_2& arr, Kernel& ker) { //create path from BFS results
     vector<Point_2> path;
-    Kernel::Construct_midpoint_2  midp = ker.construct_midpoint_2_object();
-    path.push_back(this->end);
-
-    Face_handle f = this->end_face;
-    do {
-        FaceNode* temp = &(facesMap[f]);
-        Halfedge_handle he = temp->prevEdge;
-        if (he != Halfedge_handle())
-            path.push_back(midp(he->source()->point(), he->target()->point()));
-        f = temp->prevFace;
-    } while (f != Face_handle());
-    path.push_back(this->start);
-
+    PointNode *node = &(pointsMap[this->endPoint]);
+    while (node != nullptr)
+    {
+        path.push_back(node->point);
+        PointNode *prev = node->prev;
+        if(prev->prev == nullptr)
+        {
+            path.push_back(prev->point);
+            break;
+        }
+        PointNode *prevprev = prev->prev;
+        while(prevprev != nullptr)
+        {
+            if(CGAL::intersection(getSegment(prev->edge), getSegment(node->point, prevprev->point)))
+            {
+                bool segmentFine = true;
+                for(PointNode *temp:node->crossedSegments)
+                {
+                    if(!CGAL::intersection(getSegment(temp->edge), getSegment(node->point, prevprev->point)))
+                    {
+                        segmentFine = false;
+                        break;
+                    }
+                }
+                if(segmentFine)
+                    node->crossedSegments.push_back(prev);
+            } else
+                break;
+            prev = prevprev;
+            if(prev->prev == nullptr)
+            {
+                path.push_back(prev->point);
+                prev = prev->prev;
+                break;
+            }
+            prevprev = prev->prev;
+        }
+        node = prev;
+    }
     return path;
 }
 
@@ -278,10 +388,10 @@ vector<Point_2> PathPlanner::planPath() {
 }
 
 void PathPlanner::addFrame(Arrangement_2 &arr) {
-    FT mostLeft = this->start.x() < this->end.x() ? this->start.x() : this->end.x();
-    FT mostRight = this->start.x() < this->end.x() ? this->end.x() : this->start.x();
-    FT mostUp = this->start.y() < this->end.y() ? this->end.y() : this->start.y();
-    FT mostDown = this->start.y() < this->end.y() ? this->start.y() : this->end.y();
+    FT mostLeft = this->startPoint.x() < this->endPoint.x() ? this->startPoint.x() : this->endPoint.x();
+    FT mostRight = this->startPoint.x() < this->endPoint.x() ? this->endPoint.x() : this->startPoint.x();
+    FT mostUp = this->startPoint.y() < this->endPoint.y() ? this->endPoint.y() : this->startPoint.y();
+    FT mostDown = this->startPoint.y() < this->endPoint.y() ? this->startPoint.y() : this->endPoint.y();
 
     for (Arr_VrtxCIter vit = arr.vertices_begin(); vit != arr.vertices_end(); ++vit)
     {

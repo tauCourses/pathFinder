@@ -10,6 +10,7 @@
 #include <CGAL/Polygon_set_2.h>
 #include <CGAL/basic.h>
 #include <CGAL/minkowski_sum_2.h>
+#include <CGAL/intersections.h>
 #include <CGAL/Arr_vertical_decomposition_2.h>
 #include <CGAL/Arr_landmarks_point_location.h>
 #include <CGAL/graph_traits_Dual_Arrangement_2.h>
