@@ -77,7 +77,6 @@ private:
     void addStartPathToQueue(Arrangement_2 &arr);
 
     FT pointsDistance(Point_2 a, Point_2 b);
-    Point_2 midPoint(Point_2 a, Point_2 b);
 
     Segment_2 getSegment(Halfedge_handle edge);
     Segment_2 getSegment(Point_2 a, Point_2 b);

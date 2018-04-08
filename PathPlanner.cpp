@@ -163,11 +163,6 @@ Face_handle PathPlanner::get_face(Arrangement_2& arr, const Landmarks_pl &pl, co
     throw "point is not in a legal position - inside an obstacle face";
 }
 
-Point_2 PathPlanner::midPoint(Point_2 a, Point_2 b)
-{
-    return {(a.x() + b.x()) /2, (a.y()+b.y())/2 };
-}
-
 FT PathPlanner::pointsDistance(Point_2 a_point, Point_2 b_point)
 {
     FT distance = (a_point.x() - b_point.x()) * (a_point.x() - b_point.x()) +
@@ -352,6 +347,8 @@ vector<Point_2> PathPlanner::reversedPath(Arrangement_2& arr, Kernel& ker) { //c
                 }
                 if(segmentFine)
                     node->crossedSegments.push_back(prev);
+                else
+                    break;
             } else
                 break;
             prev = prevprev;
